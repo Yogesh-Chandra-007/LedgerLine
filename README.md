@@ -5,30 +5,64 @@ LedgerLine is a secure financial transaction management system focused on correc
 ## Technology stack
 
 - Java 21
-- Spring Boot
+- Spring Boot 3.5
 - Maven
-- PostgreSQL
-- React
-- Vite
+- PostgreSQL (planned for the persistence milestone)
+- React 19
+- Vite 7
 
-## Current implementation status
+## Day 1 repository foundation
 
-**Foundation stage — 6 November 2026**
+The repository now contains an initial Java/Spring Boot API and React/Vite interface:
 
-The project has been set up locally with the following foundation work reported:
+- Spring Boot application entry point.
+- `GET /api/health` health endpoint.
+- A Spring MockMvc test for the health endpoint.
+- React landing page that checks the backend health endpoint.
+- Vite development proxy from `/api` to `http://localhost:8080`.
+- Git ignore rules for build output, dependencies, IDE files, local databases, and secrets.
+- `PROMPTS.md` for transparent AI assistance and developer decisions.
 
-- React + Vite frontend scaffold
-- Java 21 + Maven backend scaffold
-- Spring Boot application setup
-- PostgreSQL database and application user configuration
-- Initial Spring Security configuration
-- Health-check endpoint: `GET /api/health`
+**Verification status:** These source files were generated and committed to GitHub. They have not yet been built or executed in this environment. The presence of a test file is not a claim that the test has passed. Run the checks below in a development environment and record the actual result.
 
-The local application source has not yet been pushed to this repository. The items below are planned work, not claims of completed functionality.
+## Run locally
+
+### Backend
+
+Requirements: JDK 21 and Maven.
+
+```bash
+cd backend
+mvn spring-boot:run
+```
+
+API base URL: `http://localhost:8080`
+
+Health endpoint: `http://localhost:8080/api/health`
+
+Run backend tests:
+
+```bash
+mvn test
+```
+
+### Frontend
+
+Requirements: Node.js and npm.
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Vite development URL: `http://localhost:5173`
+
+The frontend requests `/api/health`; while developing, Vite proxies that path to the backend on port 8080. Start both applications to see the connected status.
 
 ## Engineering roadmap
 
-1. Model users, accounts, ledger entries, and transactions.
+1. Define users, accounts, ledger entries, and transaction domain models.
 2. Implement authentication, role-based access control, and account ownership checks.
 3. Implement deposits, withdrawals, and transfers within database transactions.
 4. Enforce double-entry accounting and money-conservation invariants.
@@ -37,35 +71,7 @@ The local application source has not yet been pushed to this repository. The ite
 7. Add an append-only audit trail and transaction statements.
 8. Write automated unit, integration, security, and concurrency tests.
 9. Integrate the React dashboard with the backend APIs.
-10. Document, deploy, and verify the application.
-
-## Local development
-
-### Backend
-
-From the Spring Boot project directory:
-
-```bat
-set "DB_PASSWORD=YOUR_LOCAL_DATABASE_PASSWORD"
-mvnw.cmd spring-boot:run
-```
-
-Backend base URL: `http://localhost:8080`
-
-Health endpoint: `http://localhost:8080/api/health`
-
-### Frontend
-
-From the frontend directory:
-
-```bash
-npm install
-npm run dev
-```
-
-Vite development URL: `http://localhost:5173`
-
-These are setup notes for the current scaffold. Confirm the local project paths and configuration before running them.
+10. Configure deployment and verify the live application.
 
 ## Security principles
 
@@ -75,6 +81,6 @@ These are setup notes for the current scaffold. Confirm the local project paths 
 - Use database transactions and concurrency controls for money movement.
 - Keep transaction and audit records consistent and traceable.
 
-## Project status
+## Current limitations
 
-Core financial operations, complete RBAC, double-entry ledger enforcement, idempotency, concurrency protection, audit logging, automated tests, frontend integration, and deployment are still pending implementation and verification.
+The current code is a Day 1 scaffold, not a complete banking or ledger application. PostgreSQL persistence, authentication/RBAC, account management, deposits, withdrawals, transfers, double-entry ledger enforcement, idempotency, concurrency protection, audit logging, and deployment remain unimplemented.

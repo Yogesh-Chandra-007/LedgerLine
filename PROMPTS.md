@@ -53,3 +53,13 @@ Add an entry whenever AI guidance materially affects implementation. Record mist
 - **Developer decision / correction:**
 - **How it was tested:**
 - **Result:** Pass / Fail / Not yet tested
+
+
+## Day 1 — GitHub source scaffold (6 November 2026)
+
+- **Prompt / task:** Create the initial Java 21 Spring Boot API and React/Vite frontend directly in the private GitHub repository, without inventing or claiming access to local source files.
+- **AI suggestion:** Add a minimal application entry point, health endpoint, API test, frontend health-status page, Vite API proxy, and development instructions.
+- **What was incorrect, incomplete, or risky:** The source was generated through GitHub file operations and could not be compiled or executed in the user's local environment from this session. Dependency versions and runtime behavior therefore remain to be verified.
+- **Developer decision / correction:** Keep the first milestone intentionally small; use Java 21, avoid committing credentials, keep the repository private, and explicitly label the code as unverified until local checks are run.
+- **How it was tested:** Files and commit were checked through GitHub after writing. No Maven test, frontend build, or live deployment was executed in this session.
+- **Result:** Source scaffold committed; runtime verification pending.
