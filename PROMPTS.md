@@ -4,7 +4,7 @@ This file records AI assistance, material corrections, and developer verificatio
 
 ## AI tools used
 
-ChatGPT has been used for project planning, Java/Spring Boot configuration guidance, PostgreSQL setup and troubleshooting, React/Vite setup, debugging, and Git/GitHub workflow guidance. The developer remains responsible for reviewing, implementing, testing, and understanding the project.
+ChatGPT has been used for project planning, Java/Spring Boot configuration guidance, PostgreSQL setup and troubleshooting, React/Vite setup, debugging, Git/GitHub workflow guidance, and implementation assistance. The developer remains responsible for reviewing, implementing, testing, and understanding the project.
 
 ## Recorded AI mistakes and corrections
 
@@ -27,7 +27,7 @@ ChatGPT has been used for project planning, Java/Spring Boot configuration guida
 - **What was incorrect, incomplete, or risky:** The configuration caused Maven version-management issues.
 - **Developer decision / correction:** The dependency configuration was corrected.
 - **How it was tested:** Maven setup was checked.
-- **Result:** Reported corrected; migration behavior itself is not claimed as verified.
+- **Result:** Reported corrected; migration behavior itself was not claimed as verified at that time.
 
 ### PostgreSQL authentication
 - **AI suggestion:** Initial database connection configuration did not resolve the local authentication failure.
@@ -36,11 +36,21 @@ ChatGPT has been used for project planning, Java/Spring Boot configuration guida
 - **How it was tested:** The developer reported that the backend setup and database connection were verified locally.
 - **Result:** Reported resolved.
 
+## Day 1 — GitHub foundation and security implementation (6 November 2026)
+
+- **Prompt / task:** Follow the agreed six-day roadmap. Day 1 is foundation and security: project setup, initial identity schema, authentication, and role-based access control.
+- **AI suggestion:** Build the Java 21 Spring Boot API foundation, PostgreSQL/Flyway user schema, database-backed authentication, role authorization, isolated tests, and React/Vite health-check interface.
+- **What was incomplete or risky:** The first GitHub commit only established documentation and a basic app scaffold. It did not satisfy the agreed Day 1 authentication and RBAC target. This was identified and corrected by expanding the implementation.
+- **Developer decision / correction:** Keep the repository private; do not commit secrets; do not add public self-registration or a hard-coded production administrator; use environment-provided one-time bootstrap credentials; use a test-only H2 profile.
+- **Implementation added:** PostgreSQL app_users migration, UserAccount and UserRole domain types, repository, database-backed UserDetailsService, BCrypt password encoder, stateless Spring Security configuration, role-protected route probes, administrator bootstrap, role-based tests, and data/security model documentation.
+- **How it was tested:** GitHub file/commit verification only. Maven tests, PostgreSQL migration, and frontend build have not yet been executed in this session. GitHub Actions is configured to run the backend tests and frontend build after push.
+- **Result:** Day 1 source implementation committed; runtime/CI verification pending. Do not mark Day 1 verified until the workflow passes and the application is exercised.
+
 ## Verification boundary
 
-The developer reported completing the local Java 21/Maven, Spring Boot, PostgreSQL, React/Vite, and health-endpoint foundation. The repository documentation is not proof that every local setup step is reproducible on another machine.
+The developer reported completing local Java 21/Maven, Spring Boot, PostgreSQL, React/Vite, and health-endpoint setup before this GitHub scaffold was generated. That report is separate from verification of the newly committed repository source.
 
-The following are **not yet implemented or verified**: complete authentication and RBAC, account management, deposits, withdrawals, transfers, double-entry ledger enforcement, money-conservation checks, overdraft prevention under concurrency, idempotency, append-only audit logging, statements, automated transaction/security/concurrency tests, complete frontend/API integration, and deployment.
+The following are not yet implemented: account management and ownership checks, deposits, withdrawals, transfers, double-entry ledger enforcement, money-conservation checks, overdraft prevention under concurrency, idempotency, append-only audit logging, statements, full frontend/API integration, and deployment. These are assigned to Days 2–5.
 
 ## Ongoing decision log
 
@@ -53,13 +63,3 @@ Add an entry whenever AI guidance materially affects implementation. Record mist
 - **Developer decision / correction:**
 - **How it was tested:**
 - **Result:** Pass / Fail / Not yet tested
-
-
-## Day 1 — GitHub source scaffold (6 November 2026)
-
-- **Prompt / task:** Create the initial Java 21 Spring Boot API and React/Vite frontend directly in the private GitHub repository, without inventing or claiming access to local source files.
-- **AI suggestion:** Add a minimal application entry point, health endpoint, API test, frontend health-status page, Vite API proxy, and development instructions.
-- **What was incorrect, incomplete, or risky:** The source was generated through GitHub file operations and could not be compiled or executed in the user's local environment from this session. Dependency versions and runtime behavior therefore remain to be verified.
-- **Developer decision / correction:** Keep the first milestone intentionally small; use Java 21, avoid committing credentials, keep the repository private, and explicitly label the code as unverified until local checks are run.
-- **How it was tested:** Files and commit were checked through GitHub after writing. No Maven test, frontend build, or live deployment was executed in this session.
-- **Result:** Source scaffold committed; runtime verification pending.
