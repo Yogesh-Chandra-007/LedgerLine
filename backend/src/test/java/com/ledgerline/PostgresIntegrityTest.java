@@ -149,6 +149,29 @@ class PostgresIntegrityTest {
         }
     }
 
+
+    @Test
+    void runtimeRoleCannotRewriteAccountOwnershipOrCurrency() {
+        BankAccount account = banking.openAccount(username, "INR");
+        assertThrows(DataAccessException.class,
+                () -> jdbc.update("UPDATE bank_accounts SET owner_username = ? WHERE id = ?",
+                        username + "-other", account.getId()));
+        assertThrows(DataAccessException.class,
+                () -> jdbc.update("UPDATE bank_accounts SET currency = 'USD' WHERE id = ?", account.getId()));
+    }
+
+    @Test
+    void postgresRejectsAccountInsertedWithUnbackedOpeningBalance() {
+        UUID accountId = UUID.randomUUID();
+        assertThrows(DataAccessException.class, () -> jdbc.update("""
+            INSERT INTO bank_accounts
+            (id, account_number, owner_username, currency, balance_minor, status, created_at)
+            VALUES (?, ?, ?, 'INR', 777, 'ACTIVE', CURRENT_TIMESTAMP)
+            """, accountId, "LL" + UUID.randomUUID().toString().replace("-", "").substring(0, 22),
+                username));
+        assertFalse(accounts.findById(accountId).isPresent());
+    }
+
     private boolean attemptDeposit(UUID accountId, String key, CountDownLatch start) {
         try {
             start.await();

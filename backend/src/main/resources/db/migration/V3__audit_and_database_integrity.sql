@@ -57,6 +57,10 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE CONSTRAINT TRIGGER trg_account_insert_reconciles
+AFTER INSERT ON bank_accounts DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION assert_bank_account_balance_matches_ledger();
+
 CREATE CONSTRAINT TRIGGER trg_account_balance_reconciles
 AFTER UPDATE OF balance_minor ON bank_accounts DEFERRABLE INITIALLY DEFERRED
 FOR EACH ROW EXECUTE FUNCTION assert_bank_account_balance_matches_ledger();
@@ -95,6 +99,8 @@ FOR EACH ROW EXECUTE FUNCTION reject_ledger_mutation();
 -- The application connects with a non-owner role. Only the migrator owns schema objects.
 GRANT USAGE ON SCHEMA public TO ledgerline_app;
 GRANT SELECT, INSERT ON app_users TO ledgerline_app;
-GRANT SELECT, INSERT, UPDATE ON bank_accounts TO ledgerline_app;
-GRANT SELECT, UPDATE ON system_ledger_accounts TO ledgerline_app;
+GRANT SELECT, INSERT ON bank_accounts TO ledgerline_app;
+GRANT UPDATE (balance_minor) ON bank_accounts TO ledgerline_app;
+GRANT SELECT ON system_ledger_accounts TO ledgerline_app;
+GRANT UPDATE (balance_minor) ON system_ledger_accounts TO ledgerline_app;
 GRANT SELECT, INSERT ON ledger_transactions, ledger_entries, audit_events TO ledgerline_app;

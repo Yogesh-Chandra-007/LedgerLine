@@ -7,6 +7,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HexFormat;
 import java.util.List;
+import java.time.Instant;
+import java.util.Comparator;
 import java.util.UUID;
 
 import com.ledgerline.domain.*;
@@ -28,6 +30,7 @@ public class BankingService {
     private final LedgerEntryRepository entries;
     private final SystemLedgerAccountRepository systemAccounts;
     private final AuditEventService auditEvents;
+    private final AuditEventRepository auditEventRepository;
     private final JdbcTemplate jdbcTemplate;
     private final boolean advisoryLocksEnabled;
 
@@ -36,6 +39,7 @@ public class BankingService {
                           LedgerEntryRepository entries,
                           SystemLedgerAccountRepository systemAccounts,
                           AuditEventService auditEvents,
+                          AuditEventRepository auditEventRepository,
                           JdbcTemplate jdbcTemplate,
                           @Value("${ledgerline.database.advisory-locks:false}") boolean advisoryLocksEnabled) {
         this.accounts = accounts;
@@ -43,6 +47,7 @@ public class BankingService {
         this.entries = entries;
         this.systemAccounts = systemAccounts;
         this.auditEvents = auditEvents;
+        this.auditEventRepository = auditEventRepository;
         this.jdbcTemplate = jdbcTemplate;
         this.advisoryLocksEnabled = advisoryLocksEnabled;
     }
@@ -162,14 +167,32 @@ public class BankingService {
     public List<StatementLine> statement(String username, UUID accountId) {
         BankAccount account = accounts.findByIdAndOwnerUsername(accountId, username)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Account not found"));
-        List<LedgerEntry> chronological = entries.findAllByAccountIdOrderByCreatedAtAsc(account.getId());
+        List<StatementItem> timeline = new ArrayList<>();
+        entries.findAllByAccountIdOrderByCreatedAtAsc(account.getId()).forEach(entry ->
+                timeline.add(new StatementItem(entry.getCreatedAt(), entry, null)));
+        auditEventRepository.findAllByActorUsernameAndResourceIdAndOutcomeOrderByOccurredAtAsc(
+                username, account.getId().toString(), "REJECTED").forEach(event ->
+                timeline.add(new StatementItem(event.getOccurredAt(), null, event)));
+        timeline.sort(Comparator.comparing(StatementItem::occurredAt));
+
         long runningBalance = 0L;
         List<StatementLine> lines = new ArrayList<>();
-        for (LedgerEntry entry : chronological) {
-            runningBalance = Math.addExact(runningBalance, entry.getAmountMinor());
-            LedgerTransaction tx = entry.getTransaction();
-            lines.add(new StatementLine(entry.getId(), tx.getId(), tx.getType().name(),
-                    tx.getCreatedBy(), entry.getAmountMinor(), runningBalance, entry.getCreatedAt().toString()));
+        for (StatementItem item : timeline) {
+            if (item.entry() != null) {
+                LedgerEntry entry = item.entry();
+                runningBalance = Math.addExact(runningBalance, entry.getAmountMinor());
+                LedgerTransaction tx = entry.getTransaction();
+                lines.add(new StatementLine(entry.getId().toString(), tx.getId().toString(),
+                        tx.getType().name(), tx.getCreatedBy(), "SUCCESS", entry.getAmountMinor(),
+                        runningBalance, null, entry.getCreatedAt().toString()));
+            } else {
+                AuditEvent event = item.auditEvent();
+                String path = event.getRequestPath() == null ? "" : event.getRequestPath();
+                String type = path.substring(path.lastIndexOf('/') + 1).toUpperCase(java.util.Locale.ROOT);
+                lines.add(new StatementLine(event.getId().toString(), null, type,
+                        event.getActorUsername(), "REJECTED", event.getAmountMinor(),
+                        runningBalance, event.getReason(), event.getOccurredAt().toString()));
+            }
         }
         Collections.reverse(lines);
         return lines;
@@ -256,6 +279,8 @@ public class BankingService {
 
     public record TransactionResult(UUID transactionId, String type, UUID accountId,
                                     long balanceMinor, String currency, String createdAt) {}
-    public record StatementLine(UUID id, UUID transactionId, String type, String createdBy,
-                                long amountMinor, long balanceAfterMinor, String createdAt) {}
+    private record StatementItem(Instant occurredAt, LedgerEntry entry, AuditEvent auditEvent) {}
+    public record StatementLine(String id, String transactionId, String type, String createdBy,
+                                String outcome, Long amountMinor, long balanceAfterMinor,
+                                String reason, String createdAt) {}
 }

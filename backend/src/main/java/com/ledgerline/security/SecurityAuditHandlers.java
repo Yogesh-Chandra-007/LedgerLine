@@ -37,7 +37,7 @@ public class SecurityAuditHandlers implements AuthenticationEntryPoint, AccessDe
     private void record(String actor, String action, HttpServletRequest request) {
         try {
             auditEvents.recordRejection(actor, action, request.getMethod(),
-                    request.getRequestURI(), action, null);
+                    request.getRequestURI(), action, null, null, null);
         } catch (RuntimeException ignored) {
             // Preserve the security response even if the audit store is unavailable.
         }

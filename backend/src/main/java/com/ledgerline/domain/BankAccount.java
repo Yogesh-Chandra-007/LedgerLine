@@ -3,8 +3,10 @@ package com.ledgerline.domain;
 import java.time.Instant;
 import java.util.UUID;
 import jakarta.persistence.*;
+import org.hibernate.annotations.DynamicUpdate;
 
 @Entity
+@DynamicUpdate
 @Table(name = "bank_accounts")
 public class BankAccount {
     @Id

@@ -13,23 +13,32 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.web.server.ResponseStatusException;
 
 @SpringBootTest
+@AutoConfigureMockMvc
 @ActiveProfiles("test")
 class BankingWorkflowTest {
     private static final String PASSWORD = "Test-Only-Password-123!";
 
     @Autowired BankingService banking;
+    @Autowired MockMvc mockMvc;
     @Autowired UserAccountRepository users;
     @Autowired BankAccountRepository accounts;
     @Autowired LedgerTransactionRepository transactions;
     @Autowired LedgerEntryRepository entries;
     @Autowired SystemLedgerAccountRepository systemAccounts;
     @Autowired AuditEventRepository auditEvents;
+    @Autowired com.ledgerline.service.AuditEventService auditEventService;
     @Autowired PasswordEncoder encoder;
 
     @BeforeEach
@@ -199,6 +208,44 @@ class BankingWorkflowTest {
                 () -> banking.deposit("holder-one", account.getId(), Long.MAX_VALUE, "unsafe-amount"));
         assertEquals(0L, accounts.findById(account.getId()).orElseThrow().getBalanceMinor());
         assertEquals(0, transactions.count());
+    }
+
+
+    @Test
+    void refusedAttemptAppearsInStatementWithoutChangingBalance() {
+        BankAccount account = banking.openAccount("holder-one", "INR");
+        banking.deposit("holder-one", account.getId(), 1_000L, "statement-seed");
+        auditEventService.recordRejection("holder-one",
+                "POST /api/account-holder/transactions/withdraw", "POST",
+                "/api/account-holder/transactions/withdraw", "Insufficient funds",
+                "ACCOUNT", account.getId().toString(), 2_000L);
+
+        var statement = banking.statement("holder-one", account.getId());
+        assertEquals(2, statement.size());
+        assertEquals("REJECTED", statement.get(0).outcome());
+        assertEquals("WITHDRAW", statement.get(0).type());
+        assertEquals(2_000L, statement.get(0).amountMinor());
+        assertEquals(1_000L, statement.get(0).balanceAfterMinor());
+        assertEquals("Insufficient funds", statement.get(0).reason());
+    }
+
+
+    @Test
+    void rejectedHttpWithdrawalIsAuditedAndVisibleInOwnStatement() throws Exception {
+        BankAccount account = banking.openAccount("holder-one", "INR");
+        mockMvc.perform(post("/api/account-holder/transactions/withdraw")
+                .with(httpBasic("holder-one", PASSWORD))
+                .header("Idempotency-Key", "refused-http-" + java.util.UUID.randomUUID())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"accountId\":\"" + account.getId() + "\",\"amountMinor\":2000}"))
+                .andExpect(status().isConflict());
+
+        var statement = banking.statement("holder-one", account.getId());
+        assertEquals(1, statement.size());
+        assertEquals("REJECTED", statement.get(0).outcome());
+        assertEquals(2_000L, statement.get(0).amountMinor());
+        assertEquals(0L, statement.get(0).balanceAfterMinor());
+        assertEquals("Insufficient funds", statement.get(0).reason());
     }
 
     private boolean attemptWithdrawal(java.util.UUID accountId, String key, CountDownLatch start) {

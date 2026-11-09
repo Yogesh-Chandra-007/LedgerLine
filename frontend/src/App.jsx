@@ -314,10 +314,10 @@ export default function App() {
           <div className="section-title"><div><p className="eyebrow">APPEND-ONLY LEDGER</p><h2>Account statement</h2></div><button className="button-quiet" onClick={() => loadStatement(activeAccount?.id)}>Reload statement</button></div>
           <div className="panel table-panel">
             {statement.length === 0 ? <p className="empty-state">No transactions yet. Your posted activity will appear here.</p> :
-              <div className="table-scroll"><table><thead><tr><th>Time</th><th>Type</th><th>Initiated by</th><th>Entry</th><th>Amount</th><th>Running balance</th></tr></thead><tbody>{statement.map((row) => <tr key={row.id}>
-                <td>{new Date(row.createdAt).toLocaleString()}</td><td>{row.type}</td><td>{row.createdBy}</td><td className="mono">{row.id.slice(0, 8)}</td>
-                <td className={row.amountMinor >= 0 ? 'positive' : 'negative'}>{row.amountMinor > 0 ? '+' : ''}{money(row.amountMinor, activeAccount?.currency)}</td>
-                <td>{money(row.balanceAfterMinor, activeAccount?.currency)}</td>
+              <div className="table-scroll"><table><thead><tr><th>Time</th><th>Type</th><th>Initiated by</th><th>Outcome</th><th>Amount / attempt</th><th>Running balance</th><th>Reason</th></tr></thead><tbody>{statement.map((row) => <tr key={row.id}>
+                <td>{new Date(row.createdAt).toLocaleString()}</td><td>{row.type}</td><td>{row.createdBy || 'Unknown'}</td><td><span className={row.outcome === 'SUCCESS' ? 'positive' : 'negative'}>{row.outcome}</span></td>
+                <td className={row.outcome === 'REJECTED' ? 'negative' : row.amountMinor >= 0 ? 'positive' : 'negative'}>{row.amountMinor == null ? '—' : row.outcome === 'REJECTED' ? `Attempted ${money(row.amountMinor, activeAccount?.currency)}` : `${row.amountMinor > 0 ? '+' : ''}${money(row.amountMinor, activeAccount?.currency)}`}</td>
+                <td>{money(row.balanceAfterMinor, activeAccount?.currency)}</td><td>{row.reason || '—'}</td>
               </tr>)}</tbody></table></div>}
           </div>
         </section>

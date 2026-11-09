@@ -33,7 +33,8 @@ public class ApiExceptionHandler {
                 ? null : auth.getName();
         try {
             auditEvents.recordRejection(actor, action(request), request.getMethod(),
-                    request.getRequestURI(), exception.getReason(), amountMinor(request));
+                    request.getRequestURI(), exception.getReason(), resourceId(request) == null ? null : "ACCOUNT",
+                    resourceId(request), amountMinor(request));
         } catch (RuntimeException ignored) {
             // A failed audit write must not replace the original business rejection.
         }
@@ -44,18 +45,28 @@ public class ApiExceptionHandler {
                 "detail", exception.getReason() == null ? "Request rejected" : exception.getReason()));
     }
 
-    private Long amountMinor(HttpServletRequest request) {
+    private JsonNode requestBody(HttpServletRequest request) {
         if (!(request instanceof ContentCachingRequestWrapper cached)) return null;
         byte[] body = cached.getContentAsByteArray();
         if (body.length == 0) return null;
-        try {
-            JsonNode node = objectMapper.readTree(new String(body, StandardCharsets.UTF_8));
-            JsonNode amount = node == null ? null : node.get("amountMinor");
-            return amount != null && amount.isIntegralNumber() && amount.canConvertToLong()
-                    ? amount.longValue() : null;
-        } catch (Exception ignored) {
-            return null;
-        }
+        try { return objectMapper.readTree(new String(body, StandardCharsets.UTF_8)); }
+        catch (Exception ignored) { return null; }
+    }
+
+    private Long amountMinor(HttpServletRequest request) {
+        JsonNode node = requestBody(request);
+        JsonNode amount = node == null ? null : node.get("amountMinor");
+        return amount != null && amount.isIntegralNumber() && amount.canConvertToLong()
+                ? amount.longValue() : null;
+    }
+
+    private String resourceId(HttpServletRequest request) {
+        JsonNode node = requestBody(request);
+        if (node == null) return null;
+        JsonNode account = node.hasNonNull("accountId") ? node.get("accountId") : node.get("fromAccountId");
+        if (account == null || !account.isTextual()) return null;
+        try { return java.util.UUID.fromString(account.asText()).toString(); }
+        catch (IllegalArgumentException ignored) { return null; }
     }
 
     private String action(HttpServletRequest request) {

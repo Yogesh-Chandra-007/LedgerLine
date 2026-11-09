@@ -12,7 +12,7 @@ public class LedgerTransaction {
     private UUID id;
     @Column(name = "idempotency_key", nullable = false, unique = true, length = 100)
     private String idempotencyKey;
-    @Column(name = "request_fingerprint", nullable = false, length = 64, columnDefinition = "CHAR(64)")
+    @Column(name = "request_fingerprint", nullable = false, length = 64)
     private String requestFingerprint;
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)

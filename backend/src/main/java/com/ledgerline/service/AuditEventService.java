@@ -24,8 +24,8 @@ public class AuditEventService {
     // Rejections are recorded in an independent transaction after the business transaction rolls back.
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordRejection(String actor, String action, String method, String path,
-                                String reason, Long amountMinor) {
-        events.save(new AuditEvent(actor, action, null, null, "REJECTED",
+                                String reason, String resourceType, String resourceId, Long amountMinor) {
+        events.save(new AuditEvent(actor, action, safe(resourceType, 40), safe(resourceId, 100), "REJECTED",
                 amountMinor, safe(reason, 500), safe(method, 10), safe(path, 255), null));
     }
 
