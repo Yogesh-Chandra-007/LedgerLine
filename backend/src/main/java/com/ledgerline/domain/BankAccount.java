@@ -14,7 +14,7 @@ public class BankAccount {
     private String accountNumber;
     @Column(name = "owner_username", nullable = false, length = 80)
     private String ownerUsername;
-    @Column(nullable = false, length = 3, columnDefinition = "CHAR(3)")
+    @Column(nullable = false, length = 3)
     private String currency;
     @Column(name = "balance_minor", nullable = false)
     private long balanceMinor;
