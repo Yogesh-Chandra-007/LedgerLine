@@ -74,3 +74,5 @@ tbody tr:last-child td{border-bottom:0}
 .footer{display:flex;justify-content:space-between;gap:18px;padding:28px 0 34px;margin-top:35px;border-top:1px solid #243247;color:#71849c;font-size:11px}
 @media(max-width:850px){.overview-grid{grid-template-columns:1fr}.transaction-grid{grid-template-columns:1fr 1fr}.transaction-card:last-child{grid-column:1/-1}}
 @media(max-width:580px){.dashboard-shell{width:min(100% - 28px,1180px)}.auth-card{padding:28px}.welcome{align-items:flex-start;flex-direction:column}.transaction-grid{grid-template-columns:1fr}.transaction-card:last-child{grid-column:auto}.topbar{height:auto;min-height:72px;gap:12px}.user-menu{gap:7px;font-size:11px}.role-chip{display:none}.inline-form{align-items:stretch;flex-direction:column}.inline-form select{max-width:none}.section-title{align-items:flex-start;flex-direction:column}.footer{flex-direction:column}}
+
+.account-id{margin:12px 0 0;color:#8398b0;font-size:10px;overflow-wrap:anywhere}.account-id code{color:#b7c8dc;font-family:ui-monospace,monospace}

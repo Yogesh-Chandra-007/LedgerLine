@@ -39,6 +39,7 @@ export default function App() {
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [transferAmount, setTransferAmount] = useState('');
   const [destination, setDestination] = useState('');
+  const [pendingKeys, setPendingKeys] = useState({});
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -123,16 +124,21 @@ export default function App() {
     const payload = kind === 'transfer'
       ? { fromAccountId: activeAccount.id, toAccountId: destination, amountMinor }
       : { accountId: activeAccount.id, amountMinor };
+    const signature = JSON.stringify([kind, activeAccount.id, destination, amountMinor]);
+    const pending = pendingKeys[kind];
+    const idempotencyKey = pending?.signature === signature ? pending.key : crypto.randomUUID();
+    setPendingKeys((current) => ({ ...current, [kind]: { signature, key: idempotencyKey } }));
     setBusy(true); setError(''); setNotice('');
     try {
       await request(path, credentials, {
         method: 'POST',
-        headers: { 'Idempotency-Key': crypto.randomUUID() },
+        headers: { 'Idempotency-Key': idempotencyKey },
         body: JSON.stringify(payload)
       });
       if (kind === 'deposit') setDepositAmount('');
       if (kind === 'withdraw') setWithdrawAmount('');
       if (kind === 'transfer') setTransferAmount('');
+      setPendingKeys((current) => { const next = { ...current }; delete next[kind]; return next; });
       await loadAccounts(credentials);
       await loadStatement(activeAccount.id);
       setNotice(kind === 'transfer' ? 'Transfer completed.' : `${kind[0].toUpperCase() + kind.slice(1)} completed.`);
@@ -190,6 +196,7 @@ export default function App() {
           <p className="balance-label">Available balance</p>
           <p className="balance">{activeAccount ? money(activeAccount.balanceMinor, activeAccount.currency) : '—'}</p>
           <div className="account-meta"><span>{activeAccount?.currency || 'Create an account to begin'}</span><span>{accounts.length} account{accounts.length === 1 ? '' : 's'}</span></div>
+          {activeAccount && <p className="account-id">Shareable account ID: <code>{activeAccount.id}</code></p>}
           {accounts.length > 0 && <label className="select-account">Switch account<select value={activeAccount?.id || ''} onChange={(e) => setSelected(e.target.value)}>{accounts.map((a) => <option key={a.id} value={a.id}>{a.accountNumber} · {a.currency}</option>)}</select></label>}
         </article>
         <article className="panel create-panel">
