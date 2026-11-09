@@ -170,8 +170,8 @@ public class BankingService {
         List<StatementItem> timeline = new ArrayList<>();
         entries.findAllByAccountIdOrderByCreatedAtAsc(account.getId()).forEach(entry ->
                 timeline.add(new StatementItem(entry.getCreatedAt(), entry, null)));
-        auditEventRepository.findAllByActorUsernameAndResourceIdAndOutcomeOrderByOccurredAtAsc(
-                username, account.getId().toString(), "REJECTED").forEach(event ->
+        auditEventRepository.findAllByResourceIdAndOutcomeOrderByOccurredAtAsc(
+                account.getId().toString(), "REJECTED").forEach(event ->
                 timeline.add(new StatementItem(event.getOccurredAt(), null, event)));
         timeline.sort(Comparator.comparing(StatementItem::occurredAt));
 

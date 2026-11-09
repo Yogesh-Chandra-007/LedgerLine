@@ -7,6 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface AuditEventRepository extends JpaRepository<AuditEvent, UUID> {
     List<AuditEvent> findTop200ByOrderByOccurredAtDesc();
-    List<AuditEvent> findAllByActorUsernameAndResourceIdAndOutcomeOrderByOccurredAtAsc(
-            String actorUsername, String resourceId, String outcome);
+    List<AuditEvent> findAllByResourceIdAndOutcomeOrderByOccurredAtAsc(
+            String resourceId, String outcome);
 }

@@ -50,7 +50,10 @@ class PostgresIntegrityTest {
         BankAccount account = banking.openAccount(username, "INR");
         banking.deposit(username, account.getId(), 12_345L, "pg-valid-" + UUID.randomUUID());
         assertEquals(12_345L, accounts.findById(account.getId()).orElseThrow().getBalanceMinor());
-        assertEquals(2, entries.findAllByAccountIdOrderByCreatedAtDesc(account.getId()).size());
+        var accountEntries = entries.findAllByAccountIdOrderByCreatedAtDesc(account.getId());
+        assertEquals(1, accountEntries.size(), "A customer account receives one side of a double-entry posting");
+        assertEquals(2, entries.findAllByTransactionId(accountEntries.get(0).getTransaction().getId()).size(),
+                "The transaction must contain the customer posting and its system counter-posting");
         assertTrue(auditEvents.findTop200ByOrderByOccurredAtDesc().stream()
                 .anyMatch(event -> "DEPOSIT".equals(event.getActionType())
                         && username.equals(event.getActorUsername())));
@@ -170,6 +173,84 @@ class PostgresIntegrityTest {
             """, accountId, "LL" + UUID.randomUUID().toString().replace("-", "").substring(0, 22),
                 username));
         assertFalse(accounts.findById(accountId).isPresent());
+    }
+
+
+    @Test
+    void postgresSerializesConcurrentWithdrawalsWithoutOverdraft() throws Exception {
+        BankAccount account = banking.openAccount(username, "INR");
+        banking.deposit(username, account.getId(), 1_000L, "pg-withdraw-seed-" + UUID.randomUUID());
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<Boolean> first = pool.submit(() -> attemptWithdrawal(account.getId(), "pg-withdraw-a-" + UUID.randomUUID(), start));
+            Future<Boolean> second = pool.submit(() -> attemptWithdrawal(account.getId(), "pg-withdraw-b-" + UUID.randomUUID(), start));
+            start.countDown();
+            int successful = (first.get(15, TimeUnit.SECONDS) ? 1 : 0)
+                    + (second.get(15, TimeUnit.SECONDS) ? 1 : 0);
+            assertEquals(1, successful);
+            assertEquals(300L, accounts.findById(account.getId()).orElseThrow().getBalanceMinor());
+            assertEveryTransactionBalances();
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void postgresLocksOppositeDirectionTransfersInDeterministicOrder() throws Exception {
+        BankAccount first = banking.openAccount(username, "INR");
+        BankAccount second = banking.openAccount(username, "INR");
+        banking.deposit(username, first.getId(), 1_000L, "pg-opposite-seed-a-" + UUID.randomUUID());
+        banking.deposit(username, second.getId(), 1_000L, "pg-opposite-seed-b-" + UUID.randomUUID());
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> forward = pool.submit(() -> {
+                await(start);
+                banking.transfer(username, first.getId(), second.getId(), 100L,
+                        "pg-opposite-forward-" + UUID.randomUUID());
+            });
+            Future<?> reverse = pool.submit(() -> {
+                await(start);
+                banking.transfer(username, second.getId(), first.getId(), 100L,
+                        "pg-opposite-reverse-" + UUID.randomUUID());
+            });
+            start.countDown();
+            forward.get(15, TimeUnit.SECONDS);
+            reverse.get(15, TimeUnit.SECONDS);
+            assertEquals(1_000L, accounts.findById(first.getId()).orElseThrow().getBalanceMinor());
+            assertEquals(1_000L, accounts.findById(second.getId()).orElseThrow().getBalanceMinor());
+            assertEveryTransactionBalances();
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    private boolean attemptWithdrawal(UUID accountId, String key, CountDownLatch start) {
+        try {
+            await(start);
+            banking.withdraw(username, accountId, 700L, key);
+            return true;
+        } catch (ResponseStatusException expectedRejection) {
+            return false;
+        }
+    }
+
+    private void await(CountDownLatch start) {
+        try { start.await(); }
+        catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Concurrency test interrupted", interrupted);
+        }
+    }
+
+    private void assertEveryTransactionBalances() {
+        for (LedgerTransaction transaction : transactions.findAll()) {
+            var postings = entries.findAllByTransactionId(transaction.getId());
+            assertEquals(2, postings.size(), "Every transaction must have two postings");
+            assertEquals(0L, postings.stream().mapToLong(LedgerEntry::getAmountMinor).sum(),
+                    "Every transaction must sum to zero");
+        }
     }
 
     private boolean attemptDeposit(UUID accountId, String key, CountDownLatch start) {
