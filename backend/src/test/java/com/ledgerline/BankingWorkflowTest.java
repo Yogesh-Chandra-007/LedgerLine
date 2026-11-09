@@ -29,10 +29,12 @@ class BankingWorkflowTest {
     @Autowired LedgerTransactionRepository transactions;
     @Autowired LedgerEntryRepository entries;
     @Autowired SystemLedgerAccountRepository systemAccounts;
+    @Autowired AuditEventRepository auditEvents;
     @Autowired PasswordEncoder encoder;
 
     @BeforeEach
     void setUp() {
+        auditEvents.deleteAll();
         entries.deleteAll();
         transactions.deleteAll();
         accounts.deleteAll();
@@ -138,6 +140,65 @@ class BankingWorkflowTest {
         } finally {
             pool.shutdownNow();
         }
+    }
+
+
+    @Test
+    void idempotentReplayReturnsTheOriginalResultSnapshot() {
+        BankAccount account = banking.openAccount("holder-one", "INR");
+        var original = banking.deposit("holder-one", account.getId(), 500L, "snapshot-key");
+        banking.deposit("holder-one", account.getId(), 100L, "later-deposit");
+
+        var replay = banking.deposit("holder-one", account.getId(), 500L, "snapshot-key");
+        assertEquals(original.transactionId(), replay.transactionId());
+        assertEquals(500L, replay.balanceMinor(), "Replay must return the original response snapshot");
+        assertEquals(600L, accounts.findById(account.getId()).orElseThrow().getBalanceMinor());
+    }
+
+    @Test
+    void idempotencyKeyCannotBeReusedAcrossDifferentAccounts() {
+        BankAccount first = banking.openAccount("holder-one", "INR");
+        BankAccount second = banking.openAccount("holder-one", "INR");
+        banking.deposit("holder-one", first.getId(), 500L, "global-key");
+        assertThrows(ResponseStatusException.class,
+                () -> banking.deposit("holder-one", second.getId(), 500L, "global-key"));
+        assertEquals(0L, accounts.findById(second.getId()).orElseThrow().getBalanceMinor());
+    }
+
+    @Test
+    void statementIncludesInitiatorAndRunningBalance() {
+        BankAccount account = banking.openAccount("holder-one", "INR");
+        banking.deposit("holder-one", account.getId(), 1_000L, "statement-deposit");
+        banking.withdraw("holder-one", account.getId(), 250L, "statement-withdrawal");
+
+        var statement = banking.statement("holder-one", account.getId());
+        assertEquals(2, statement.size());
+        assertEquals("holder-one", statement.get(0).createdBy());
+        assertEquals(-250L, statement.get(0).amountMinor());
+        assertEquals(750L, statement.get(0).balanceAfterMinor());
+        assertEquals(1_000L, statement.get(1).balanceAfterMinor());
+    }
+
+    @Test
+    void successfulMoneyMovementsAreAuditedAtomically() {
+        BankAccount account = banking.openAccount("holder-one", "INR");
+        banking.deposit("holder-one", account.getId(), 250L, "audit-deposit");
+        var events = auditEvents.findTop200ByOrderByOccurredAtDesc();
+        assertTrue(events.stream().anyMatch(e -> e.getActionType().equals("ACCOUNT_OPENED")
+                && e.getOutcome().equals("SUCCESS")));
+        assertTrue(events.stream().anyMatch(e -> e.getActionType().equals("DEPOSIT")
+                && "holder-one".equals(e.getActorUsername())
+                && Long.valueOf(250L).equals(e.getAmountMinor())));
+    }
+
+
+    @Test
+    void rejectsAmountsBeyondSafeIntegerPrecision() {
+        BankAccount account = banking.openAccount("holder-one", "INR");
+        assertThrows(ResponseStatusException.class,
+                () -> banking.deposit("holder-one", account.getId(), Long.MAX_VALUE, "unsafe-amount"));
+        assertEquals(0L, accounts.findById(account.getId()).orElseThrow().getBalanceMinor());
+        assertEquals(0, transactions.count());
     }
 
     private boolean attemptWithdrawal(java.util.UUID accountId, String key, CountDownLatch start) {

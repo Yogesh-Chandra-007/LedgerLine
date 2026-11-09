@@ -1,4 +1,4 @@
-name: Build
+name: Build and financial-integrity verification
 
 on:
   push:
@@ -11,8 +11,29 @@ permissions:
 
 jobs:
   backend:
-    name: Backend tests
+    name: Backend tests (H2 + PostgreSQL)
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: ledgerline_db
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d ledgerline_db"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DB_URL: jdbc:postgresql://localhost:5432/ledgerline_db
+      DB_USERNAME: ledgerline_app
+      DB_PASSWORD: ledgerline_ci_password
+      MIGRATION_DB_URL: jdbc:postgresql://localhost:5432/ledgerline_db
+      MIGRATION_DB_USERNAME: ledgerline_migrator
+      MIGRATION_DB_PASSWORD: ledgerline_migration_password
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -22,7 +43,18 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
-      - name: Run Maven tests
+      - name: Provision separate migration-owner and runtime roles
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d ledgerline_db -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE ledgerline_migrator LOGIN PASSWORD 'ledgerline_migration_password';
+          CREATE ROLE ledgerline_app LOGIN PASSWORD 'ledgerline_ci_password';
+          GRANT CONNECT ON DATABASE ledgerline_db TO ledgerline_app;
+          ALTER DATABASE ledgerline_db OWNER TO ledgerline_migrator;
+          ALTER SCHEMA public OWNER TO ledgerline_migrator;
+          SQL
+      - name: Run backend tests including PostgreSQL integrity suite
         working-directory: backend
         run: mvn --batch-mode test
 

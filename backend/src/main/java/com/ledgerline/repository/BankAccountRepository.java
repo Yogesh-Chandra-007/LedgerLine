@@ -13,6 +13,7 @@ import org.springframework.data.repository.query.Param;
 
 public interface BankAccountRepository extends JpaRepository<BankAccount, UUID> {
     List<BankAccount> findAllByOwnerUsernameOrderByCreatedAtDesc(String ownerUsername);
+    List<BankAccount> findAllByOrderByCreatedAtDesc();
     Optional<BankAccount> findByIdAndOwnerUsername(UUID id, String ownerUsername);
     Optional<BankAccount> findByAccountNumber(String accountNumber);
 

@@ -18,7 +18,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    SecurityFilterChain securityFilterChain(HttpSecurity http, SecurityAuditHandlers auditHandlers) throws Exception {
         return http
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session ->
@@ -30,7 +30,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/account-holder/**").hasAnyRole("ACCOUNT_HOLDER", "ADMIN")
                         .requestMatchers("/api/access/**").authenticated()
                         .anyRequest().authenticated())
-                .httpBasic(Customizer.withDefaults())
+                .exceptionHandling(exceptions -> exceptions.accessDeniedHandler(auditHandlers))
+                .httpBasic(basic -> basic.authenticationEntryPoint(auditHandlers))
                 .build();
     }
 }

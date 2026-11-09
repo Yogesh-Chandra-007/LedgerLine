@@ -19,6 +19,11 @@ public class LedgerTransaction {
     private TransactionType type;
     @Column(name = "created_by", nullable = false, length = 80)
     private String createdBy;
+    @Column(name = "result_account_id")
+    private UUID resultAccountId;
+    @Column(name = "result_balance_minor")
+    private Long resultBalanceMinor;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -31,6 +36,9 @@ public class LedgerTransaction {
     }
     @PrePersist
     void onCreate() { if (createdAt == null) createdAt = Instant.now(); }
+    public void setResultSnapshot(UUID accountId, long balanceMinor) { this.resultAccountId = accountId; this.resultBalanceMinor = balanceMinor; }
+    public UUID getResultAccountId() { return resultAccountId; }
+    public Long getResultBalanceMinor() { return resultBalanceMinor; }
     public UUID getId() { return id; }
     public String getIdempotencyKey() { return idempotencyKey; }
     public String getRequestFingerprint() { return requestFingerprint; }

@@ -3,13 +3,17 @@ package com.ledgerline.service;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
 
 import com.ledgerline.domain.*;
 import com.ledgerline.repository.*;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -17,20 +21,30 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class BankingService {
     private static final String CASH_CLEARING = "CASH_CLEARING";
+    private static final long MAX_TRANSACTION_MINOR = 9_007_199_254_740_991L;
 
     private final BankAccountRepository accounts;
     private final LedgerTransactionRepository transactions;
     private final LedgerEntryRepository entries;
     private final SystemLedgerAccountRepository systemAccounts;
+    private final AuditEventService auditEvents;
+    private final JdbcTemplate jdbcTemplate;
+    private final boolean advisoryLocksEnabled;
 
     public BankingService(BankAccountRepository accounts,
                           LedgerTransactionRepository transactions,
                           LedgerEntryRepository entries,
-                          SystemLedgerAccountRepository systemAccounts) {
+                          SystemLedgerAccountRepository systemAccounts,
+                          AuditEventService auditEvents,
+                          JdbcTemplate jdbcTemplate,
+                          @Value("${ledgerline.database.advisory-locks:false}") boolean advisoryLocksEnabled) {
         this.accounts = accounts;
         this.transactions = transactions;
         this.entries = entries;
         this.systemAccounts = systemAccounts;
+        this.auditEvents = auditEvents;
+        this.jdbcTemplate = jdbcTemplate;
+        this.advisoryLocksEnabled = advisoryLocksEnabled;
     }
 
     @Transactional
@@ -40,7 +54,10 @@ public class BankingService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Currency must be a three-letter ISO code");
         }
         String number = "LL" + UUID.randomUUID().toString().replace("-", "").substring(0, 22).toUpperCase();
-        return accounts.save(new BankAccount(number, username, normalizedCurrency));
+        BankAccount saved = accounts.save(new BankAccount(number, username, normalizedCurrency));
+        auditEvents.recordSuccess(username, "ACCOUNT_OPENED", "ACCOUNT", saved.getId().toString(),
+                null, "Currency=" + normalizedCurrency);
+        return saved;
     }
 
     @Transactional(readOnly = true)
@@ -50,38 +67,54 @@ public class BankingService {
 
     @Transactional
     public TransactionResult deposit(String username, UUID accountId, long amountMinor, String key) {
+        lockIdempotencyKey(key);
         BankAccount account = lockOwnedAccount(accountId, username);
         validateAmount(amountMinor);
         ensureActive(account);
         SystemLedgerAccount clearing = lockClearingAccount();
         String fingerprint = fingerprint("DEPOSIT", accountId, null, amountMinor);
         LedgerTransaction existing = findIdempotent(key, fingerprint);
-        if (existing != null) return result(existing, account);
+        if (existing != null) {
+            auditEvents.recordSuccess(username, "IDEMPOTENT_REPLAY", "TRANSACTION",
+                    existing.getId().toString(), amountMinor, "DEPOSIT replay");
+            return result(existing, account);
+        }
+
         account.credit(amountMinor);
         clearing.applyDelta(-amountMinor);
-        LedgerTransaction tx = saveTransaction(key, fingerprint, TransactionType.DEPOSIT, username);
+        LedgerTransaction tx = saveTransaction(key, fingerprint, TransactionType.DEPOSIT, username, account);
         postBalanced(tx, new LedgerEntry(tx, account, amountMinor),
                 new LedgerEntry(tx, clearing, -amountMinor));
+        auditEvents.recordSuccess(username, "DEPOSIT", "ACCOUNT", account.getId().toString(),
+                amountMinor, "Transaction=" + tx.getId());
         return result(tx, account);
     }
 
     @Transactional
     public TransactionResult withdraw(String username, UUID accountId, long amountMinor, String key) {
+        lockIdempotencyKey(key);
         BankAccount account = lockOwnedAccount(accountId, username);
         validateAmount(amountMinor);
         ensureActive(account);
         SystemLedgerAccount clearing = lockClearingAccount();
         String fingerprint = fingerprint("WITHDRAWAL", accountId, null, amountMinor);
         LedgerTransaction existing = findIdempotent(key, fingerprint);
-        if (existing != null) return result(existing, account);
+        if (existing != null) {
+            auditEvents.recordSuccess(username, "IDEMPOTENT_REPLAY", "TRANSACTION",
+                    existing.getId().toString(), amountMinor, "WITHDRAWAL replay");
+            return result(existing, account);
+        }
         if (account.getBalanceMinor() < amountMinor) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Insufficient funds");
         }
+
         account.debit(amountMinor);
         clearing.applyDelta(amountMinor);
-        LedgerTransaction tx = saveTransaction(key, fingerprint, TransactionType.WITHDRAWAL, username);
+        LedgerTransaction tx = saveTransaction(key, fingerprint, TransactionType.WITHDRAWAL, username, account);
         postBalanced(tx, new LedgerEntry(tx, account, -amountMinor),
                 new LedgerEntry(tx, clearing, amountMinor));
+        auditEvents.recordSuccess(username, "WITHDRAWAL", "ACCOUNT", account.getId().toString(),
+                amountMinor, "Transaction=" + tx.getId());
         return result(tx, account);
     }
 
@@ -91,6 +124,7 @@ public class BankingService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Source and destination accounts must differ");
         }
         validateAmount(amountMinor);
+        lockIdempotencyKey(key);
         List<BankAccount> locked = accounts.lockAllByIds(List.of(fromId, toId));
         if (locked.size() != 2) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Account not found");
         BankAccount from = locked.stream().filter(a -> a.getId().equals(fromId)).findFirst().orElseThrow();
@@ -105,23 +139,40 @@ public class BankingService {
         }
         String fingerprint = fingerprint("TRANSFER", fromId, toId, amountMinor);
         LedgerTransaction existing = findIdempotent(key, fingerprint);
-        if (existing != null) return result(existing, from);
+        if (existing != null) {
+            auditEvents.recordSuccess(username, "IDEMPOTENT_REPLAY", "TRANSACTION",
+                    existing.getId().toString(), amountMinor, "TRANSFER replay");
+            return result(existing, from);
+        }
         if (from.getBalanceMinor() < amountMinor) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Insufficient funds");
         }
+
         from.debit(amountMinor);
         to.credit(amountMinor);
-        LedgerTransaction tx = saveTransaction(key, fingerprint, TransactionType.TRANSFER, username);
+        LedgerTransaction tx = saveTransaction(key, fingerprint, TransactionType.TRANSFER, username, from);
         postBalanced(tx, new LedgerEntry(tx, from, -amountMinor),
                 new LedgerEntry(tx, to, amountMinor));
+        auditEvents.recordSuccess(username, "TRANSFER", "ACCOUNT", from.getId().toString(),
+                amountMinor, "Destination=" + to.getId() + "; transaction=" + tx.getId());
         return result(tx, from);
     }
 
     @Transactional(readOnly = true)
-    public List<LedgerEntry> statement(String username, UUID accountId) {
+    public List<StatementLine> statement(String username, UUID accountId) {
         BankAccount account = accounts.findByIdAndOwnerUsername(accountId, username)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Account not found"));
-        return entries.findAllByAccountIdOrderByCreatedAtDesc(account.getId());
+        List<LedgerEntry> chronological = entries.findAllByAccountIdOrderByCreatedAtAsc(account.getId());
+        long runningBalance = 0L;
+        List<StatementLine> lines = new ArrayList<>();
+        for (LedgerEntry entry : chronological) {
+            runningBalance = Math.addExact(runningBalance, entry.getAmountMinor());
+            LedgerTransaction tx = entry.getTransaction();
+            lines.add(new StatementLine(entry.getId(), tx.getId(), tx.getType().name(),
+                    tx.getCreatedBy(), entry.getAmountMinor(), runningBalance, entry.getCreatedAt().toString()));
+        }
+        Collections.reverse(lines);
+        return lines;
     }
 
     private BankAccount lockOwnedAccount(UUID id, String username) {
@@ -139,16 +190,23 @@ public class BankingService {
     }
 
     private void postBalanced(LedgerTransaction tx, LedgerEntry first, LedgerEntry second) {
-        if (first.getAmountMinor() + second.getAmountMinor() != 0L) {
+        if (Math.addExact(first.getAmountMinor(), second.getAmountMinor()) != 0L) {
             throw new IllegalStateException("Ledger transaction is not balanced");
         }
         entries.saveAll(List.of(first, second));
     }
 
-    private LedgerTransaction findIdempotent(String key, String fingerprint) {
+    private void lockIdempotencyKey(String key) {
         if (key == null || key.isBlank() || key.length() > 100) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A valid Idempotency-Key header is required");
         }
+        if (advisoryLocksEnabled) {
+            jdbcTemplate.query("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))",
+                    statement -> statement.setString(1, key), resultSet -> null);
+        }
+    }
+
+    private LedgerTransaction findIdempotent(String key, String fingerprint) {
         return transactions.findByIdempotencyKey(key).map(existing -> {
             if (!existing.getRequestFingerprint().equals(fingerprint)) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -158,17 +216,26 @@ public class BankingService {
         }).orElse(null);
     }
 
-    private LedgerTransaction saveTransaction(String key, String fingerprint, TransactionType type, String username) {
-        return transactions.saveAndFlush(new LedgerTransaction(key, fingerprint, type, username));
+    private LedgerTransaction saveTransaction(String key, String fingerprint, TransactionType type,
+                                               String username, BankAccount resultAccount) {
+        LedgerTransaction tx = new LedgerTransaction(key, fingerprint, type, username);
+        tx.setResultSnapshot(resultAccount.getId(), resultAccount.getBalanceMinor());
+        return transactions.saveAndFlush(tx);
     }
 
     private TransactionResult result(LedgerTransaction tx, BankAccount account) {
-        return new TransactionResult(tx.getId(), tx.getType().name(), account.getId(),
-                account.getBalanceMinor(), account.getCurrency(), tx.getCreatedAt().toString());
+        UUID resultAccountId = tx.getResultAccountId() == null ? account.getId() : tx.getResultAccountId();
+        long resultBalance = tx.getResultBalanceMinor() == null
+                ? account.getBalanceMinor() : tx.getResultBalanceMinor();
+        return new TransactionResult(tx.getId(), tx.getType().name(), resultAccountId,
+                resultBalance, account.getCurrency(), tx.getCreatedAt().toString());
     }
 
     private void validateAmount(long amountMinor) {
-        if (amountMinor <= 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Amount must be positive minor units");
+        if (amountMinor <= 0 || amountMinor > MAX_TRANSACTION_MINOR) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Amount must be positive and within the supported precision limit");
+        }
     }
 
     private void ensureActive(BankAccount account) {
@@ -189,4 +256,6 @@ public class BankingService {
 
     public record TransactionResult(UUID transactionId, String type, UUID accountId,
                                     long balanceMinor, String currency, String createdAt) {}
+    public record StatementLine(UUID id, UUID transactionId, String type, String createdBy,
+                                long amountMinor, long balanceAfterMinor, String createdAt) {}
 }

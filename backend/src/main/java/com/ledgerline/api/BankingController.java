@@ -4,7 +4,6 @@ import java.util.List;
 import java.util.UUID;
 
 import com.ledgerline.domain.BankAccount;
-import com.ledgerline.domain.LedgerEntry;
 import com.ledgerline.service.BankingService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -58,8 +57,8 @@ public class BankingController {
     }
 
     @GetMapping("/accounts/{accountId}/statement")
-    public List<StatementEntry> statement(Authentication auth, @PathVariable UUID accountId) {
-        return banking.statement(auth.getName(), accountId).stream().map(StatementEntry::from).toList();
+    public List<BankingService.StatementLine> statement(Authentication auth, @PathVariable UUID accountId) {
+        return banking.statement(auth.getName(), accountId);
     }
 
     public record OpenAccountRequest(
@@ -76,13 +75,6 @@ public class BankingController {
         static AccountResponse from(BankAccount a) {
             return new AccountResponse(a.getId(), a.getAccountNumber(), a.getCurrency(),
                     a.getBalanceMinor(), a.getStatus().name(), a.getCreatedAt().toString());
-        }
-    }
-
-    public record StatementEntry(UUID id, UUID transactionId, long amountMinor, String createdAt) {
-        static StatementEntry from(LedgerEntry e) {
-            return new StatementEntry(e.getId(), e.getTransaction().getId(),
-                    e.getAmountMinor(), e.getCreatedAt().toString());
         }
     }
 }
