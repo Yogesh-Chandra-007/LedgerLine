@@ -25,6 +25,8 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.GET, "/api/health").permitAll()
+                        // The React application shell and its static assets must load before API authentication.
+                        .requestMatchers("/", "/index.html", "/assets/**", "/favicon.ico", "/favicon.svg", "/manifest.webmanifest", "/robots.txt").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/auditor/**").hasAnyRole("AUDITOR", "ADMIN")
                         .requestMatchers("/api/account-holder/**").hasAnyRole("ACCOUNT_HOLDER", "ADMIN")
