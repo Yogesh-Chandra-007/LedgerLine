@@ -85,6 +85,7 @@ public class BankingService {
             return result(existing, account);
         }
 
+        validateCredit(account, amountMinor);
         account.credit(amountMinor);
         clearing.applyDelta(-amountMinor);
         LedgerTransaction tx = saveTransaction(key, fingerprint, TransactionType.DEPOSIT, username, account);
@@ -153,6 +154,7 @@ public class BankingService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Insufficient funds");
         }
 
+        validateCredit(to, amountMinor);
         from.debit(amountMinor);
         to.credit(amountMinor);
         LedgerTransaction tx = saveTransaction(key, fingerprint, TransactionType.TRANSFER, username, from);
@@ -252,6 +254,13 @@ public class BankingService {
                 ? account.getBalanceMinor() : tx.getResultBalanceMinor();
         return new TransactionResult(tx.getId(), tx.getType().name(), resultAccountId,
                 resultBalance, account.getCurrency(), tx.getCreatedAt().toString());
+    }
+
+    private void validateCredit(BankAccount account, long amountMinor) {
+        if (account.getBalanceMinor() > MAX_TRANSACTION_MINOR - amountMinor) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The destination account would exceed the supported balance precision");
+        }
     }
 
     private void validateAmount(long amountMinor) {

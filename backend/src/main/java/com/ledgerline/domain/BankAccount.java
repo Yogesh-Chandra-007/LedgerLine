@@ -9,6 +9,7 @@ import org.hibernate.annotations.DynamicUpdate;
 @DynamicUpdate
 @Table(name = "bank_accounts")
 public class BankAccount {
+    private static final long MAX_SAFE_BALANCE_MINOR = 9_007_199_254_740_991L;
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
@@ -37,7 +38,7 @@ public class BankAccount {
     @PrePersist
     void onCreate() { if (createdAt == null) createdAt = Instant.now(); }
     public void credit(long amountMinor) {
-        if (amountMinor <= 0 || balanceMinor > Long.MAX_VALUE - amountMinor)
+        if (amountMinor <= 0 || balanceMinor > MAX_SAFE_BALANCE_MINOR - amountMinor)
             throw new IllegalArgumentException("Invalid credit amount");
         balanceMinor += amountMinor;
     }

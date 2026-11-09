@@ -226,6 +226,41 @@ class PostgresIntegrityTest {
         }
     }
 
+
+    @Test
+    void postgresRejectsBalancedTransferThatDebitsAnotherUsersAccount() {
+        String otherUsername = "pg-other-" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
+        users.save(new UserAccount(otherUsername, encoder.encode("Postgres-Test-Password-123!"),
+                UserRole.ACCOUNT_HOLDER));
+        BankAccount source = banking.openAccount(otherUsername, "INR");
+        banking.deposit(otherUsername, source.getId(), 500L, "pg-owner-seed-" + UUID.randomUUID());
+        BankAccount destination = banking.openAccount(username, "INR");
+
+        UUID txId = UUID.randomUUID();
+        TransactionTemplate tx = new TransactionTemplate(transactionManager);
+        assertThrows(RuntimeException.class, () -> tx.execute(status -> {
+            jdbc.update("UPDATE bank_accounts SET balance_minor = 400 WHERE id = ?", source.getId());
+            jdbc.update("UPDATE bank_accounts SET balance_minor = 100 WHERE id = ?", destination.getId());
+            jdbc.update("""
+                INSERT INTO ledger_transactions
+                (id, idempotency_key, request_fingerprint, type, created_by)
+                VALUES (?, ?, ?, 'TRANSFER', ?)
+                """, txId, "pg-forged-owner-" + txId, "1".repeat(64), username);
+            jdbc.update("""
+                INSERT INTO ledger_entries (id, transaction_id, account_id, amount_minor)
+                VALUES (?, ?, ?, -100)
+                """, UUID.randomUUID(), txId, source.getId());
+            jdbc.update("""
+                INSERT INTO ledger_entries (id, transaction_id, account_id, amount_minor)
+                VALUES (?, ?, ?, 100)
+                """, UUID.randomUUID(), txId, destination.getId());
+            return null;
+        }));
+        assertFalse(transactions.findById(txId).isPresent());
+        assertEquals(500L, accounts.findById(source.getId()).orElseThrow().getBalanceMinor());
+        assertEquals(0L, accounts.findById(destination.getId()).orElseThrow().getBalanceMinor());
+    }
+
     private boolean attemptWithdrawal(UUID accountId, String key, CountDownLatch start) {
         try {
             await(start);

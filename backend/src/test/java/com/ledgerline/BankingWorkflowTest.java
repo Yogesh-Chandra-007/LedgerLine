@@ -248,6 +248,18 @@ class BankingWorkflowTest {
         assertEquals("Insufficient funds", statement.get(0).reason());
     }
 
+
+    @Test
+    void accountBalanceCannotExceedFrontendSafeIntegerPrecision() {
+        BankAccount account = banking.openAccount("holder-one", "INR");
+        long nearLimit = 9_007_199_254_740_991L - 100L;
+        banking.deposit("holder-one", account.getId(), nearLimit, "near-safe-limit");
+        assertThrows(ResponseStatusException.class,
+                () -> banking.deposit("holder-one", account.getId(), 200L, "over-safe-limit"));
+        assertEquals(nearLimit, accounts.findById(account.getId()).orElseThrow().getBalanceMinor());
+        assertEquals(1, transactions.count());
+    }
+
     private boolean attemptWithdrawal(java.util.UUID accountId, String key, CountDownLatch start) {
         try {
             start.await();

@@ -11,7 +11,7 @@ Scope: the LedgerLine demo API, React frontend, PostgreSQL schema, authenticatio
 | Transfer deadlock | Failed or stuck transfers | Both account rows locked in deterministic account-ID order | Opposite-direction transfer stress test remains to be added |
 | Ledger tampering | Erased or altered financial history | PostgreSQL append-only triggers; runtime role has no UPDATE/DELETE on ledger tables | PostgreSQL integration test checks runtime permissions and owner-level trigger rejection |
 | Audit tampering | Erased/refined refusal evidence | Audit events are append-only; runtime role has no UPDATE/DELETE | PostgreSQL integration test checks owner-level trigger rejection |
-| Money creation/destruction | Ledger imbalance or forged balance | Deferred PostgreSQL constraint triggers require exactly two postings with zero sum and reconcile customer/system balances | PostgreSQL integration tests include unbalanced transaction, direct balance tampering, and unbacked account insert |
+| Money creation/destruction | Ledger imbalance or forged balance | Deferred PostgreSQL constraint triggers validate operation-specific posting shape, exactly two postings with zero sum, debit ownership, same-currency transfers, and customer/system balance reconciliation | PostgreSQL integration tests include unbalanced transaction, direct balance tampering, and unbacked account insert |
 | Numeric precision errors | Incorrect minor-unit amount | Integer minor units, BigInt-based frontend decimal parsing, safe-integer amount limit | H2 boundary tests; broader fuzz/property testing remains useful |
 | Unauthorized account mutation | Ownership/currency changed by compromised app DB credentials | Runtime role can update only balance columns; Hibernate dynamic updates limit normal balance writes | PostgreSQL integration test checks ownership/currency updates are denied |
 | Credential theft | Account takeover | BCrypt password hashing, stateless Basic auth, memory-only frontend credentials | HTTPS deployment, XSS review, rate limiting, MFA and session redesign remain |
@@ -29,4 +29,4 @@ Scope: the LedgerLine demo API, React frontend, PostgreSQL schema, authenticatio
 
 ## Residual risks
 
-This demo does not implement public registration, password reset, MFA, rate limiting, a production session/token lifecycle, monitoring, disaster recovery, or independent penetration testing. Opposite-direction transfer stress testing, broader HTTP-level authorization coverage, deployment, and live demo verification remain. Do not use real funds or real financial data.
+This demo does not implement public registration, password reset, MFA, rate limiting, a production session/token lifecycle, monitoring, disaster recovery, or independent penetration testing. Broader HTTP-level authorization coverage, deployment, and live demo verification remain. Do not use real funds or real financial data.

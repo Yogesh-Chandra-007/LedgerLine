@@ -19,13 +19,13 @@ LedgerLine is a financial-transaction integrity demo built for the Snovasys Fres
 - Customer account creation and account listing.
 - Deposits, withdrawals, and transfers using integer minor units (INR uses paise).
 - Double-entry postings: each transaction must contain exactly two signed entries whose sum is zero. External deposits/withdrawals use a system cash-clearing counter-account.
-- PostgreSQL deferred constraint triggers enforce transaction balancing and reconcile customer/system balances against immutable ledger postings at commit.
+- PostgreSQL deferred constraint triggers enforce transaction shape (deposit/withdrawal/transfer), exactly two balanced postings, source-account ownership, same-currency transfers, and customer/system balance reconciliation at commit.
 - Pessimistic row locks for balance-changing operations and deterministic account-ID lock ordering for transfers.
 - PostgreSQL transaction-scoped advisory locks serialize identical idempotency keys even when requests target different accounts.
 - Idempotency keys are bound to SHA-256 request fingerprints. A replay returns the original transaction and original result-balance snapshot; key reuse for a different request is rejected.
 - Runtime database role is separate from the migration owner. It cannot update/delete ledger or audit rows, and may update only balance columns on customer/system accounts.
 - Server-side account ownership checks; client-supplied IDs are never treated as authorization.
-- Account statements include posted debit/credit entries, initiator, running balance, and rejected attempts associated with that account.
+- Account statements include posted debit/credit entries, initiator, running balance, and rejected attempts targeting that account, including attempts initiated by another identity.
 - Successful business operations and rejected business/security requests are recorded in an append-only audit trail.
 - Admin workspace for user provisioning and system-wide account/transaction/audit review.
 - Read-only auditor workspace for account register, transaction postings, and audit events.
@@ -134,7 +134,7 @@ The suite includes H2 workflow/RBAC tests and PostgreSQL-specific integration te
 - Rejection of unbalanced postings and direct balance tampering.
 - Append-only ledger/audit triggers and runtime database permissions.
 - Concurrent duplicate idempotency keys across different accounts.
-- Concurrent withdrawals and original idempotency response snapshots.
+- Concurrent withdrawals, concurrent opposite-direction transfers, source-account ownership enforcement, and original idempotency response snapshots.
 - Refused HTTP withdrawals appearing in the account statement without changing the balance.
 
 For H2-only tests without a PostgreSQL service:

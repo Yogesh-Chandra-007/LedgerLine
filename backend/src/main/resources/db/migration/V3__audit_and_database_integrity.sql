@@ -20,15 +20,90 @@ CREATE INDEX idx_audit_events_occurred_at ON audit_events(occurred_at DESC);
 CREATE INDEX idx_audit_events_actor ON audit_events(actor_username, occurred_at DESC);
 
 CREATE FUNCTION assert_ledger_transaction_balanced() RETURNS trigger AS $$
-DECLARE target_id UUID; posting_count BIGINT; posting_sum NUMERIC;
+DECLARE
+    target_id UUID;
+    posting_count BIGINT;
+    posting_sum NUMERIC;
+    tx_type VARCHAR(16);
+    tx_actor VARCHAR(80);
+    customer_count BIGINT;
+    system_count BIGINT;
+    customer_debits BIGINT;
+    customer_credits BIGINT;
+    system_debits BIGINT;
+    system_credits BIGINT;
+    invalid_debits BIGINT;
+    invalid_system_accounts BIGINT;
+    currency_count BIGINT;
 BEGIN
     IF TG_TABLE_NAME = 'ledger_transactions' THEN target_id := NEW.id;
     ELSE target_id := NEW.transaction_id; END IF;
-    SELECT COUNT(*), COALESCE(SUM(amount_minor), 0) INTO posting_count, posting_sum
+
+    SELECT type, created_by INTO tx_type, tx_actor
+      FROM ledger_transactions WHERE id = target_id;
+    SELECT COUNT(*), COALESCE(SUM(amount_minor), 0),
+           COUNT(*) FILTER (WHERE account_id IS NOT NULL),
+           COUNT(*) FILTER (WHERE system_account_code IS NOT NULL),
+           COUNT(*) FILTER (WHERE account_id IS NOT NULL AND amount_minor < 0),
+           COUNT(*) FILTER (WHERE account_id IS NOT NULL AND amount_minor > 0),
+           COUNT(*) FILTER (WHERE system_account_code IS NOT NULL AND amount_minor < 0),
+           COUNT(*) FILTER (WHERE system_account_code IS NOT NULL AND amount_minor > 0)
+      INTO posting_count, posting_sum, customer_count, system_count,
+           customer_debits, customer_credits, system_debits, system_credits
       FROM ledger_entries WHERE transaction_id = target_id;
+
     IF posting_count <> 2 OR posting_sum <> 0 THEN
         RAISE EXCEPTION 'Ledger transaction % must contain exactly two balanced postings (count %, sum %)',
             target_id, posting_count, posting_sum USING ERRCODE = '23514';
+    END IF;
+
+    IF tx_type = 'DEPOSIT' THEN
+        IF customer_count <> 1 OR system_count <> 1 OR customer_credits <> 1 OR system_debits <> 1 THEN
+            RAISE EXCEPTION 'Deposit % must credit one customer account and debit one system clearing account', target_id
+                USING ERRCODE = '23514';
+        END IF;
+        SELECT COUNT(*) INTO invalid_debits
+          FROM ledger_entries le JOIN bank_accounts ba ON ba.id = le.account_id
+         WHERE le.transaction_id = target_id AND ba.owner_username <> tx_actor;
+        SELECT COUNT(*) INTO invalid_system_accounts
+          FROM ledger_entries WHERE transaction_id = target_id
+            AND system_account_code IS NOT NULL AND system_account_code <> 'CASH_CLEARING';
+        IF invalid_debits + invalid_system_accounts <> 0 THEN
+            RAISE EXCEPTION 'Deposit % actor does not own the credited account', target_id USING ERRCODE = '23514';
+        END IF;
+    ELSIF tx_type = 'WITHDRAWAL' THEN
+        IF customer_count <> 1 OR system_count <> 1 OR customer_debits <> 1 OR system_credits <> 1 THEN
+            RAISE EXCEPTION 'Withdrawal % must debit one customer account and credit one system clearing account', target_id
+                USING ERRCODE = '23514';
+        END IF;
+        SELECT COUNT(*) INTO invalid_debits
+          FROM ledger_entries le JOIN bank_accounts ba ON ba.id = le.account_id
+         WHERE le.transaction_id = target_id AND le.amount_minor < 0 AND ba.owner_username <> tx_actor;
+        SELECT COUNT(*) INTO invalid_system_accounts
+          FROM ledger_entries WHERE transaction_id = target_id
+            AND system_account_code IS NOT NULL AND system_account_code <> 'CASH_CLEARING';
+        IF invalid_debits + invalid_system_accounts <> 0 THEN
+            RAISE EXCEPTION 'Withdrawal % actor does not own the debited account', target_id USING ERRCODE = '23514';
+        END IF;
+    ELSIF tx_type = 'TRANSFER' THEN
+        IF customer_count <> 2 OR system_count <> 0 OR customer_debits <> 1 OR customer_credits <> 1 THEN
+            RAISE EXCEPTION 'Transfer % must debit one customer account and credit one customer account', target_id
+                USING ERRCODE = '23514';
+        END IF;
+        SELECT COUNT(DISTINCT ba.currency) INTO currency_count
+          FROM ledger_entries le JOIN bank_accounts ba ON ba.id = le.account_id
+         WHERE le.transaction_id = target_id;
+        IF currency_count <> 1 THEN
+            RAISE EXCEPTION 'Transfer % cannot cross currencies', target_id USING ERRCODE = '23514';
+        END IF;
+        SELECT COUNT(*) INTO invalid_debits
+          FROM ledger_entries le JOIN bank_accounts ba ON ba.id = le.account_id
+         WHERE le.transaction_id = target_id AND le.amount_minor < 0 AND ba.owner_username <> tx_actor;
+        IF invalid_debits <> 0 THEN
+            RAISE EXCEPTION 'Transfer % actor does not own the source account', target_id USING ERRCODE = '23514';
+        END IF;
+    ELSE
+        RAISE EXCEPTION 'Unsupported ledger transaction type %', tx_type USING ERRCODE = '23514';
     END IF;
     RETURN NULL;
 END;
