@@ -1,65 +1,32 @@
-# AI Assistance and Developer Decisions
+# AI assistance and developer decision log
 
-This file records AI assistance, material corrections, and developer verification for LedgerLine. It is intended to make the development process transparent.
+This file records AI-assisted work and material decisions for LedgerLine. AI-generated code is not proof of correctness; the developer remains responsible for review, execution, and understanding.
 
-## AI tools used
+## Tools used
 
-ChatGPT has been used for project planning, Java/Spring Boot configuration guidance, PostgreSQL setup and troubleshooting, React/Vite setup, debugging, Git/GitHub workflow guidance, and implementation assistance. The developer remains responsible for reviewing, implementing, testing, and understanding the project.
+ChatGPT assisted with planning, repository inspection, Java/Spring Boot implementation, API design, tests, documentation, and GitHub operations. The challenge portal links to a public BalanceVault repository. It was inspected to understand the broader financial-ledger problem, but its implementation was not copied into LedgerLine. LedgerLine remains an independent Java/Spring Boot implementation.
 
-## Recorded AI mistakes and corrections
+## Earlier corrections
 
-### Java version configuration
-- **AI suggestion:** An initial Maven configuration used Java 25.
-- **What was incorrect, incomplete, or risky:** The installed development JDK was Java 21, so the suggested configuration did not match the local environment.
-- **Developer decision / correction:** The project configuration was changed to Java 21.
-- **How it was tested:** The local Maven build/setup was checked.
-- **Result:** Reported corrected; retain build verification with subsequent commits.
+- A Java 25 suggestion was corrected to Java 21 to match the development environment.
+- An unresolvable governance starter dependency was removed.
+- Flyway dependency management was corrected.
+- A local PostgreSQL authentication mismatch was addressed by resetting the local application user's password and using environment variables.
 
-### Unresolvable governance starter dependency
-- **AI suggestion:** Add a governance starter dependency.
-- **What was incorrect, incomplete, or risky:** The dependency could not be resolved from Maven Central and was not required for the current foundation.
-- **Developer decision / correction:** The dependency was removed.
-- **How it was tested:** Maven setup was checked after the change.
-- **Result:** Reported corrected.
+## 6 November 2026 — Identity and RBAC foundation
 
-### Flyway dependency configuration
-- **AI suggestion:** Add Flyway using the initial dependency configuration.
-- **What was incorrect, incomplete, or risky:** The configuration caused Maven version-management issues.
-- **Developer decision / correction:** The dependency configuration was corrected.
-- **How it was tested:** Maven setup was checked.
-- **Result:** Reported corrected; migration behavior itself was not claimed as verified at that time.
+- **Task:** Establish Spring Boot, PostgreSQL/Flyway, database-backed authentication, and role-based access.
+- **Implementation:** User identity schema, BCrypt password hashing, ADMIN/ACCOUNT_HOLDER/AUDITOR roles, stateless Spring Security, one-time environment-configured admin bootstrap, and H2 tests.
+- **Verification:** GitHub source inspection only at commit time. CI/local execution was still pending.
 
-### PostgreSQL authentication
-- **AI suggestion:** Initial database connection configuration did not resolve the local authentication failure.
-- **What was incorrect, incomplete, or risky:** The application database user's password/configuration did not match the local PostgreSQL credentials.
-- **Developer decision / correction:** The application user's password was reset and the backend was configured to receive the password through an environment variable.
-- **How it was tested:** The developer reported that the backend setup and database connection were verified locally.
-- **Result:** Reported resolved.
+## 9 November 2026 — Banking operations and React dashboard
 
-## Day 1 — GitHub foundation and security implementation (6 November 2026)
+- **Task:** Catch up on the unfinished banking workflows and create a usable demo UI.
+- **Implementation added:** Customer account entity and schema, internal cash-clearing ledger account, immutable transaction/entry model, two-sided postings, account ownership checks, integer minor-unit amounts, pessimistic account locking, idempotency keys with request fingerprints, deposit/withdrawal/transfer endpoints, account statements, admin provisioning of non-admin users, and React dashboard flows.
+- **Design correction:** A one-sided ledger entry is not double-entry accounting. Deposit and withdrawal operations were revised to post a customer-side entry and an equal/opposite system cash-clearing entry. Every transaction is checked to sum to zero before entries are saved.
+- **Verification status:** Source files and GitHub commit contents are reviewable. Maven tests, PostgreSQL migrations/triggers, frontend build, and live end-to-end flows have not yet been executed in this session. Do not claim they pass until run.
+- **Known risks:** Concurrent reuse of one idempotency key across different account lock sets needs a dedicated PostgreSQL test and graceful conflict handling. A reconciliation job and complete admin/auditor UI are not yet implemented.
 
-- **Prompt / task:** Follow the agreed six-day roadmap. Day 1 is foundation and security: project setup, initial identity schema, authentication, and role-based access control.
-- **AI suggestion:** Build the Java 21 Spring Boot API foundation, PostgreSQL/Flyway user schema, database-backed authentication, role authorization, isolated tests, and React/Vite health-check interface.
-- **What was incomplete or risky:** The first GitHub commit only established documentation and a basic app scaffold. It did not satisfy the agreed Day 1 authentication and RBAC target. This was identified and corrected by expanding the implementation.
-- **Developer decision / correction:** Keep the repository private; do not commit secrets; do not add public self-registration or a hard-coded production administrator; use environment-provided one-time bootstrap credentials; use a test-only H2 profile.
-- **Implementation added:** PostgreSQL app_users migration, UserAccount and UserRole domain types, repository, database-backed UserDetailsService, BCrypt password encoder, stateless Spring Security configuration, role-protected route probes, administrator bootstrap, role-based tests, and data/security model documentation.
-- **How it was tested:** GitHub file/commit verification only. Maven tests, PostgreSQL migration, and frontend build have not yet been executed in this session. GitHub Actions is configured to run the backend tests and frontend build after push.
-- **Result:** Day 1 source implementation committed; runtime/CI verification pending. Do not mark Day 1 verified until the workflow passes and the application is exercised.
+## Ongoing decision record
 
-## Verification boundary
-
-The developer reported completing local Java 21/Maven, Spring Boot, PostgreSQL, React/Vite, and health-endpoint setup before this GitHub scaffold was generated. That report is separate from verification of the newly committed repository source.
-
-The following are not yet implemented: account management and ownership checks, deposits, withdrawals, transfers, double-entry ledger enforcement, money-conservation checks, overdraft prevention under concurrency, idempotency, append-only audit logging, statements, full frontend/API integration, and deployment. These are assigned to Days 2–5.
-
-## Ongoing decision log
-
-Add an entry whenever AI guidance materially affects implementation. Record mistakes and corrections plainly; do not describe a feature as passing unless a test was actually run.
-
-### YYYY-MM-DD — Short task title
-- **Prompt / task:**
-- **AI suggestion:**
-- **What was incorrect, incomplete, or risky:**
-- **Developer decision / correction:**
-- **How it was tested:**
-- **Result:** Pass / Fail / Not yet tested
+For each material AI-assisted change, record the task, proposed change, developer review/correction, exact test command, and actual result. Never fabricate test results, commits, or manual work.

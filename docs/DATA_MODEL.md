@@ -1,26 +1,27 @@
-# Day 1 — Initial data model
+# LedgerLine data model
 
-## Scope
+## Identity
 
-Day 1 establishes the identity and authorization data needed before financial account operations are added. It deliberately does not create account or transaction tables; those belong to Day 2, when the ledger domain and its invariants are introduced together.
+`app_users` stores a UUID identity, unique username, BCrypt password hash, enabled flag, and one role (ADMIN, ACCOUNT_HOLDER, or AUDITOR).
 
-## app_users
+## Customer accounts
 
-| Column | Type | Rule |
-|---|---|---|
-| id | UUID | Primary key |
-| username | VARCHAR(80) | Required, unique |
-| password_hash | VARCHAR(100) | Required; BCrypt hash only |
-| role | VARCHAR(30) | ADMIN, ACCOUNT_HOLDER, or AUDITOR |
-| enabled | BOOLEAN | Required; defaults true |
-| created_at | TIMESTAMPTZ | Required, set on insert |
+`bank_accounts` stores an account UUID, unique display account number, owner username, ISO-style three-letter currency code, cached balance in integer minor units, status, and creation time. A database check prevents negative customer balances. The API resolves the authenticated username from Spring Security and checks ownership in the service layer.
 
-A database check constraint limits roles to the three supported values. A role index supports role-based administrative queries.
+## System ledger accounts
 
-## Design decisions
+`system_ledger_accounts` contains internal counter-accounts. The initial `CASH_CLEARING` account represents the external cash side of customer deposits and withdrawals. It is not exposed as a customer account.
 
-- Passwords are never stored in plaintext.
-- User identity is represented by an immutable UUID primary key.
-- A user has one explicit role in this initial version. Multi-role membership can be introduced later if the challenge requires it.
-- No public registration endpoint exists. User provisioning must be an administrative operation; public self-registration would create an unnecessary privilege-escalation surface.
-- Financial account tables are intentionally deferred to Day 2 so account ownership and ledger relationships are designed together.
+## Posted transactions and entries
+
+`ledger_transactions` stores a unique idempotency key, SHA-256 request fingerprint, transaction type, actor, and timestamp.
+
+`ledger_entries` stores signed integer minor-unit postings. Exactly one of `account_id` or `system_account_code` must be set. Each posted operation creates two entries whose signed sum is zero:
+
+- Deposit: customer account +amount; cash clearing -amount.
+- Withdrawal: customer account -amount; cash clearing +amount.
+- Transfer: source customer account -amount; destination customer account +amount.
+
+The customer account balance is updated in the same database transaction as the ledger transaction and entries. The current implementation keeps a cached account balance and ledger history; a production reconciliation job should periodically compare the cached balance with the sum of that account's ledger entries.
+
+PostgreSQL triggers reject updates and deletes to transaction and ledger-entry rows. Corrections must be represented by compensating entries rather than editing history.
