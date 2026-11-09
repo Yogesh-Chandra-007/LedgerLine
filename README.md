@@ -137,7 +137,7 @@ cd backend
 mvn --batch-mode test
 ```
 
-The suite includes H2 workflow/RBAC tests and PostgreSQL-specific integration tests for:
+The latest verified run executed 35 tests (17 banking workflow, 1 health, 10 PostgreSQL integrity, 7 role-based access) with zero failures, errors, or skips. The suite includes H2 workflow/RBAC tests and PostgreSQL-specific integration tests for:
 
 - Flyway migration and schema validation.
 - Deferred double-entry and balance-reconciliation constraints.
