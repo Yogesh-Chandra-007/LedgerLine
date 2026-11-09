@@ -116,6 +116,16 @@ Content-Type: application/json
 
 This represents INR 125.00 when the account currency is INR.
 
+## Container build
+
+The root `Dockerfile` builds the React production bundle and packages it into Spring Boot static resources. The resulting single container serves both the UI and API from one origin.
+
+```bash
+docker build -t ledgerline:local .
+```
+
+For provider configuration and the separate migration/runtime database roles, see [the deployment guide](docs/DEPLOYMENT.md). A successful image build is not evidence of a live deployment.
+
 ## Verification
 
 ### Full CI test suite

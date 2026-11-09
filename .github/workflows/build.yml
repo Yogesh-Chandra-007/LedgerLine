@@ -74,3 +74,12 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         run: npm run build
+
+  container:
+    name: Production container build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Build application image
+        run: docker build --tag ledgerline:${{ github.sha }} .
