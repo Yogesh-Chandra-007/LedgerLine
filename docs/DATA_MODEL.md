@@ -14,7 +14,7 @@
 
 ## Posted transactions and entries
 
-`ledger_transactions` stores a unique idempotency key, SHA-256 request fingerprint, transaction type, actor, and timestamp.
+`ledger_transactions` stores a unique idempotency key, SHA-256 request fingerprint, transaction type, actor, and timestamp, together with the original result-account and result-balance snapshot used for idempotent replay.
 
 `ledger_entries` stores signed integer minor-unit postings. Exactly one of `account_id` or `system_account_code` must be set. Each posted operation creates two entries whose signed sum is zero:
 
@@ -22,6 +22,6 @@
 - Withdrawal: customer account -amount; cash clearing +amount.
 - Transfer: source customer account -amount; destination customer account +amount.
 
-The customer account balance is updated in the same database transaction as the ledger transaction and entries. The current implementation keeps a cached account balance and ledger history; a production reconciliation job should periodically compare the cached balance with the sum of that account's ledger entries.
+The customer account balance is updated in the same database transaction as the ledger transaction and entries. Deferred PostgreSQL constraint triggers reconcile customer and system account balances against their ledger postings at transaction commit. This is stronger than relying only on a periodic reconciliation job; an independent operational reconciliation report can still be useful for monitoring and incident response.
 
 PostgreSQL triggers reject updates and deletes to transaction and ledger-entry rows. Corrections must be represented by compensating entries rather than editing history.
