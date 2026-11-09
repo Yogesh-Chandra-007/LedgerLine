@@ -46,8 +46,7 @@ public class AdminUserController {
 
     public record CreateUserRequest(
             @NotBlank @Size(min = 3, max = 80) @Pattern(regexp = "^[A-Za-z0-9._-]+$") String username,
-            @NotBlank @Size(min = 12, max = 72) String password,
+            @NotBlank @Pattern(regexp = "^[!-~]{12,72}$", message = "Password must be 12-72 printable ASCII characters") String password,
             @NotBlank String role) {}
-
     public record CreatedUser(String username, String role, boolean enabled) {}
 }

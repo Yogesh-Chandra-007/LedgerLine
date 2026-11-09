@@ -35,7 +35,9 @@ export default function App() {
   const [selected, setSelected] = useState('');
   const [statement, setStatement] = useState([]);
   const [currency, setCurrency] = useState('INR');
-  const [amount, setAmount] = useState('');
+  const [depositAmount, setDepositAmount] = useState('');
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [transferAmount, setTransferAmount] = useState('');
   const [destination, setDestination] = useState('');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
@@ -102,11 +104,16 @@ export default function App() {
   };
 
   const transact = async (kind) => {
-    if (!activeAccount || !amount || Number(amount) <= 0) {
+    const rawAmount = kind === 'deposit' ? depositAmount : kind === 'withdraw' ? withdrawAmount : transferAmount;
+    if (!activeAccount || !rawAmount || Number(rawAmount) <= 0) {
       setError('Choose an account and enter a positive amount.');
       return;
     }
-    const amountMinor = Math.round(Number(amount) * 100);
+    if (!/^\\d+(\\.\\d{1,2})?$/.test(rawAmount)) {
+      setError('Enter a valid amount with up to two decimal places.');
+      return;
+    }
+    const amountMinor = Math.round(Number(rawAmount) * 100);
     if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) {
       setError('Enter a valid amount with up to two decimal places.');
       return;
@@ -123,7 +130,9 @@ export default function App() {
         headers: { 'Idempotency-Key': crypto.randomUUID() },
         body: JSON.stringify(payload)
       });
-      setAmount('');
+      if (kind === 'deposit') setDepositAmount('');
+      if (kind === 'withdraw') setWithdrawAmount('');
+      if (kind === 'transfer') setTransferAmount('');
       await loadAccounts(credentials);
       await loadStatement(activeAccount.id);
       setNotice(kind === 'transfer' ? 'Transfer completed.' : `${kind[0].toUpperCase() + kind.slice(1)} completed.`);
@@ -191,9 +200,9 @@ export default function App() {
       <section className="section-block">
         <div className="section-title"><div><p className="eyebrow">MONEY MOVEMENT</p><h2>Make a transaction</h2></div><span className="muted small">Amounts are entered in major units</span></div>
         <div className="transaction-grid">
-          <article className="panel transaction-card"><span className="transaction-icon deposit">＋</span><h3>Deposit</h3><p className="muted">Add funds to your selected account.</p><label>Amount<input type="number" min="0.01" step="0.01" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} /></label><button onClick={() => transact('deposit')} disabled={busy || !activeAccount}>Deposit funds</button></article>
-          <article className="panel transaction-card"><span className="transaction-icon withdraw">−</span><h3>Withdraw</h3><p className="muted">Withdraw from your selected account.</p><label>Amount<input type="number" min="0.01" step="0.01" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} /></label><button className="button-secondary" onClick={() => transact('withdraw')} disabled={busy || !activeAccount}>Withdraw funds</button></article>
-          <article className="panel transaction-card"><span className="transaction-icon transfer">↗</span><h3>Transfer</h3><p className="muted">Move funds to another account.</p><label>Destination account ID<input value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="Paste destination account UUID" /></label><label>Amount<input type="number" min="0.01" step="0.01" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} /></label><button className="button-secondary" onClick={() => transact('transfer')} disabled={busy || !activeAccount || !destination}>Transfer funds</button></article>
+          <article className="panel transaction-card"><span className="transaction-icon deposit">＋</span><h3>Deposit</h3><p className="muted">Add funds to your selected account.</p><label>Amount<input type="number" min="0.01" step="0.01" placeholder="0.00" value={depositAmount} onChange={(e) => setDepositAmount(e.target.value)} /></label><button onClick={() => transact('deposit')} disabled={busy || !activeAccount}>Deposit funds</button></article>
+          <article className="panel transaction-card"><span className="transaction-icon withdraw">−</span><h3>Withdraw</h3><p className="muted">Withdraw from your selected account.</p><label>Amount<input type="number" min="0.01" step="0.01" placeholder="0.00" value={withdrawAmount} onChange={(e) => setWithdrawAmount(e.target.value)} /></label><button className="button-secondary" onClick={() => transact('withdraw')} disabled={busy || !activeAccount}>Withdraw funds</button></article>
+          <article className="panel transaction-card"><span className="transaction-icon transfer">↗</span><h3>Transfer</h3><p className="muted">Move funds to another account.</p><label>Destination account ID<input value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="Paste destination account UUID" /></label><label>Amount<input type="number" min="0.01" step="0.01" placeholder="0.00" value={transferAmount} onChange={(e) => setTransferAmount(e.target.value)} /></label><button className="button-secondary" onClick={() => transact('transfer')} disabled={busy || !activeAccount || !destination}>Transfer funds</button></article>
         </div>
       </section>
       <section className="section-block">
