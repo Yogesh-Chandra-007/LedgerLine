@@ -1,50 +1,69 @@
 # Deployment guide
 
-LedgerLine can be packaged as one container: the React/Vite production build is copied into Spring Boot's static resources, so the browser UI and `/api` routes share one origin.
+LedgerLine is packaged as one Docker container: the React production build is copied into Spring Boot static resources, so the UI and `/api` routes share one origin.
 
-## Build and run the container
+## Recommended demo hosting: Render + Neon
 
-From the repository root:
+The repository includes a Render Blueprint at `render.yaml`. It configures a free Docker web service in Singapore, deploys from `main`, and checks `/api/health`.
+
+**Important limitations:** Render's free web service sleeps after 15 minutes without traffic and can take about a minute to wake. Neon Free suspends database compute after 5 minutes idle and has monthly compute/network quotas. This setup is suitable for a challenge demo, not production banking. Review the providers' current limits before creating resources.
+
+### 1. Create the Neon PostgreSQL database
+
+1. Create a Neon account and a new PostgreSQL project.
+2. Save the connection details securely. Use the Neon connection string and add `sslmode=require`; the JDBC URL must start with `jdbc:postgresql://`.
+3. In the Neon SQL Editor, create the separate runtime role (choose a strong password):
+
+```sql
+CREATE ROLE ledgerline_app LOGIN PASSWORD 'REPLACE_WITH_A_STRONG_UNIQUE_PASSWORD';
+GRANT CONNECT ON DATABASE neondb TO ledgerline_app;
+GRANT USAGE ON SCHEMA public TO ledgerline_app;
+```
+
+Use the Neon project's default owner role as the Flyway migration identity. The V3 migration grants `ledgerline_app` the minimum runtime table/column permissions. Do not use the owner credentials as the application's runtime identity.
+
+If your Neon database name is not `neondb`, substitute its actual name in the GRANT statement.
+
+### 2. Create the Render service
+
+1. Sign in to Render and connect the GitHub account that can access this private repository.
+2. Choose **New → Blueprint** and select `Yogesh-Chandra-007/LedgerLine`, branch `main`.
+3. Render reads `render.yaml`. Confirm the service is named `ledgerline`, uses the Docker runtime and the Free plan. Do not select a paid plan unless you explicitly choose to.
+4. Supply the prompted environment variables as secrets/values:
+
+| Variable | Value |
+|---|---|
+| `DB_URL` | Neon JDBC URL, e.g. `jdbc:postgresql://HOST/DB?sslmode=require` |
+| `DB_USERNAME` | `ledgerline_app` |
+| `DB_PASSWORD` | Runtime role password created in step 1 |
+| `MIGRATION_DB_URL` | Same Neon JDBC URL |
+| `MIGRATION_DB_USERNAME` | Neon project owner role username |
+| `MIGRATION_DB_PASSWORD` | Neon project owner role password |
+| `BOOTSTRAP_ADMIN_USERNAME` | A unique administrator username |
+| `BOOTSTRAP_ADMIN_PASSWORD` | A strong, unique one-time password |
+
+Do not paste credentials into GitHub, chat, source files, or Docker build arguments. Enter them only in Render's environment-variable/secret interface.
+
+### 3. Deploy and verify
+
+1. Start the Blueprint deploy and watch the build/runtime logs.
+2. Confirm Flyway completes all migrations and the service health check passes.
+3. Open the generated HTTPS `onrender.com` URL. Confirm the React app loads and `/api/health` responds successfully.
+4. Sign in with the bootstrap administrator, create one ACCOUNT_HOLDER and one AUDITOR, then remove `BOOTSTRAP_ADMIN_PASSWORD` from Render and redeploy/restart.
+5. Test the account-holder flow: create account, deposit, withdraw, transfer, replay an idempotency key, and inspect the statement.
+6. Test the auditor's read-only views and verify an account holder cannot access another user's account.
+7. Record the live URL and the exact date/time of verification in the challenge submission. Do not claim tests you did not perform.
+
+## Container details
+
+Build locally from the repository root:
 
 ```bash
 docker build -t ledgerline:local .
 ```
 
-The image listens on `PORT` (default 8080), runs as a non-root user, and exposes `GET /api/health` as its health check.
-
-The app needs a PostgreSQL database and two separate database roles:
-
-- `ledgerline_migrator`: owns schema objects and is used only by Flyway.
-- `ledgerline_app`: runtime-only permissions used by Spring Data/JPA.
-
-Configure these environment variables in the hosting provider:
-
-| Variable | Purpose |
-|---|---|
-| `DB_URL` | JDBC URL for the runtime database connection |
-| `DB_USERNAME` | Runtime role, normally `ledgerline_app` |
-| `DB_PASSWORD` | Runtime role password |
-| `MIGRATION_DB_URL` | JDBC URL used by Flyway |
-| `MIGRATION_DB_USERNAME` | Migration owner, normally `ledgerline_migrator` |
-| `MIGRATION_DB_PASSWORD` | Migration owner password |
-| `BOOTSTRAP_ADMIN_USERNAME` | Optional one-time administrator username |
-| `BOOTSTRAP_ADMIN_PASSWORD` | Optional one-time bootstrap password; remove after first successful startup |
-| `PORT` | Hosting platform's HTTP port; defaults to 8080 |
-
-The V3 migration grants the runtime role only the permissions the application needs. Do not run the app with the migration-owner or PostgreSQL superuser credentials.
-
-## Railway deployment outline
-
-1. Create a PostgreSQL service and a separate application service from this GitHub repository.
-2. Provision the two database roles using the PostgreSQL superuser during initial database setup.
-3. Set the variables above on the application service. Use the provider's private/internal database connection URL for both JDBC URLs where supported.
-4. Configure the service health check path as `/api/health`.
-5. Deploy the container and wait for Flyway to finish before testing sign-in.
-6. Create the first admin using the bootstrap variables, then remove the bootstrap password.
-7. Verify the live frontend, backend health, all three roles, deposits, withdrawals, transfers, statements, and rejected-attempt audit events from a private browser window.
-
-Do not put database passwords, admin passwords, or API credentials in the repository or build arguments. Store them only in the hosting provider's secret/environment-variable manager.
+The image listens on `PORT` (default 8080), runs as a non-root user, and exposes `GET /api/health` for the platform health check.
 
 ## Production-readiness boundary
 
-A successful image build is not a successful deployment. Before claiming a live deployment, verify the provider's deployment status, health check, database migrations, HTTPS URL, and role-based end-to-end flows. This guide does not claim that a deployment has already been created.
+A successful image build is not a successful deployment. Before claiming a live deployment, verify the provider's deployment status, health check, database migrations, HTTPS URL, and role-based end-to-end flows. Free-tier hosting is for demonstration only; it does not provide the availability, backups, or operational guarantees required for a real financial service.

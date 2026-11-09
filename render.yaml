@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: ledgerline
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: main
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: DB_URL
+        sync: false
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: MIGRATION_DB_URL
+        sync: false
+      - key: MIGRATION_DB_USERNAME
+        sync: false
+      - key: MIGRATION_DB_PASSWORD
+        sync: false
+      - key: BOOTSTRAP_ADMIN_USERNAME
+        sync: false
+      - key: BOOTSTRAP_ADMIN_PASSWORD
+        sync: false

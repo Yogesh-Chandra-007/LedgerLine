@@ -124,7 +124,7 @@ The root `Dockerfile` builds the React production bundle and packages it into Sp
 docker build -t ledgerline:local .
 ```
 
-For provider configuration and the separate migration/runtime database roles, see [the deployment guide](docs/DEPLOYMENT.md). A successful image build is not evidence of a live deployment.
+For the Render + Neon demo deployment path and the separate migration/runtime database roles, see [the deployment guide](docs/DEPLOYMENT.md). A successful image build is not evidence of a live deployment.
 
 ## Verification
 
