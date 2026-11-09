@@ -4,9 +4,17 @@ import './style.css';
 const API = '/api';
 
 function money(minor, currency = 'INR') {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency', currency, minimumFractionDigits: 2
-  }).format((minor || 0) / 100);
+  const amount = BigInt(Math.trunc(minor || 0));
+  const negative = amount < 0n;
+  const absolute = negative ? -amount : amount;
+  const whole = absolute / 100n;
+  const fraction = (absolute % 100n).toString().padStart(2, '0');
+  const wholeText = new Intl.NumberFormat('en-IN', {
+    style: 'currency', currency, minimumFractionDigits: 0, maximumFractionDigits: 0
+  }).format(whole);
+  const decimal = new Intl.NumberFormat('en-IN').formatToParts(1.1)
+    .find((part) => part.type === 'decimal').value;
+  return `${negative ? '-' : ''}${wholeText}${decimal}${fraction}`;
 }
 
 function toMinorUnits(raw) {

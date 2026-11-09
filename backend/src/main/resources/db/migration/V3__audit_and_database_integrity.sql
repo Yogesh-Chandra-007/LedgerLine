@@ -16,6 +16,17 @@ CREATE TABLE audit_events (
     occurred_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT chk_audit_outcome CHECK (outcome IN ('SUCCESS', 'REJECTED'))
 );
+
+ALTER TABLE bank_accounts
+    ADD CONSTRAINT chk_account_balance_safe_integer
+    CHECK (balance_minor <= 9007199254740991);
+ALTER TABLE ledger_entries
+    ADD CONSTRAINT chk_ledger_entry_safe_amount
+    CHECK (amount_minor BETWEEN -9007199254740991 AND 9007199254740991);
+ALTER TABLE ledger_transactions
+    ADD CONSTRAINT chk_result_balance_safe_integer
+    CHECK (result_balance_minor IS NULL OR result_balance_minor BETWEEN 0 AND 9007199254740991);
+
 CREATE INDEX idx_audit_events_occurred_at ON audit_events(occurred_at DESC);
 CREATE INDEX idx_audit_events_actor ON audit_events(actor_username, occurred_at DESC);
 
@@ -35,6 +46,12 @@ DECLARE
     invalid_debits BIGINT;
     invalid_system_accounts BIGINT;
     currency_count BIGINT;
+    account_count BIGINT;
+    inactive_accounts BIGINT;
+    expected_result_account UUID;
+    actual_result_balance BIGINT;
+    stored_result_account UUID;
+    stored_result_balance BIGINT;
 BEGIN
     IF TG_TABLE_NAME = 'ledger_transactions' THEN target_id := NEW.id;
     ELSE target_id := NEW.transaction_id; END IF;
@@ -55,6 +72,34 @@ BEGIN
     IF posting_count <> 2 OR posting_sum <> 0 THEN
         RAISE EXCEPTION 'Ledger transaction % must contain exactly two balanced postings (count %, sum %)',
             target_id, posting_count, posting_sum USING ERRCODE = '23514';
+    END IF;
+
+    SELECT COUNT(*) INTO inactive_accounts
+      FROM ledger_entries le JOIN bank_accounts ba ON ba.id = le.account_id
+     WHERE le.transaction_id = target_id AND ba.status <> 'ACTIVE';
+    IF inactive_accounts <> 0 THEN
+        RAISE EXCEPTION 'Ledger transaction % references an inactive account', target_id
+            USING ERRCODE = '23514';
+    END IF;
+
+    SELECT result_account_id, result_balance_minor
+      INTO stored_result_account, stored_result_balance
+      FROM ledger_transactions WHERE id = target_id;
+    SELECT account_id INTO expected_result_account
+      FROM ledger_entries
+     WHERE transaction_id = target_id AND account_id IS NOT NULL
+       AND ((tx_type = 'DEPOSIT' AND amount_minor > 0)
+         OR (tx_type IN ('WITHDRAWAL', 'TRANSFER') AND amount_minor < 0));
+    IF stored_result_account IS NULL OR stored_result_balance IS NULL
+       OR stored_result_account IS DISTINCT FROM expected_result_account THEN
+        RAISE EXCEPTION 'Ledger transaction % has an invalid result snapshot', target_id
+            USING ERRCODE = '23514';
+    END IF;
+    SELECT balance_minor INTO actual_result_balance
+      FROM bank_accounts WHERE id = stored_result_account;
+    IF stored_result_balance IS DISTINCT FROM actual_result_balance THEN
+        RAISE EXCEPTION 'Ledger transaction % result balance snapshot does not match its account', target_id
+            USING ERRCODE = '23514';
     END IF;
 
     IF tx_type = 'DEPOSIT' THEN
@@ -90,10 +135,11 @@ BEGIN
             RAISE EXCEPTION 'Transfer % must debit one customer account and credit one customer account', target_id
                 USING ERRCODE = '23514';
         END IF;
-        SELECT COUNT(DISTINCT ba.currency) INTO currency_count
+        SELECT COUNT(DISTINCT ba.currency), COUNT(DISTINCT le.account_id)
+          INTO currency_count, account_count
           FROM ledger_entries le JOIN bank_accounts ba ON ba.id = le.account_id
          WHERE le.transaction_id = target_id;
-        IF currency_count <> 1 THEN
+        IF currency_count <> 1 OR account_count <> 2 THEN
             RAISE EXCEPTION 'Transfer % cannot cross currencies', target_id USING ERRCODE = '23514';
         END IF;
         SELECT COUNT(*) INTO invalid_debits

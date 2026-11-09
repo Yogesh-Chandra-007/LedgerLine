@@ -243,9 +243,9 @@ class PostgresIntegrityTest {
             jdbc.update("UPDATE bank_accounts SET balance_minor = 100 WHERE id = ?", destination.getId());
             jdbc.update("""
                 INSERT INTO ledger_transactions
-                (id, idempotency_key, request_fingerprint, type, created_by)
-                VALUES (?, ?, ?, 'TRANSFER', ?)
-                """, txId, "pg-forged-owner-" + txId, "1".repeat(64), username);
+                (id, idempotency_key, request_fingerprint, type, created_by, result_account_id, result_balance_minor)
+                VALUES (?, ?, ?, 'TRANSFER', ?, ?, 400)
+                """, txId, "pg-forged-owner-" + txId, "1".repeat(64), username, source.getId());
             jdbc.update("""
                 INSERT INTO ledger_entries (id, transaction_id, account_id, amount_minor)
                 VALUES (?, ?, ?, -100)

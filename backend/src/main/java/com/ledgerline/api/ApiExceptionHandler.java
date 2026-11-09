@@ -4,6 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ledgerline.service.AuditEventService;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -43,6 +46,27 @@ public class ApiExceptionHandler {
                 "status", status.value(),
                 "error", status.getReasonPhrase(),
                 "detail", exception.getReason() == null ? "Request rejected" : exception.getReason()));
+    }
+
+
+    @ExceptionHandler({MethodArgumentNotValidException.class, HttpMessageNotReadableException.class,
+            MissingRequestHeaderException.class})
+    public ResponseEntity<Map<String, Object>> handleInvalidRequest(
+            Exception exception, HttpServletRequest request) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        String actor = auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())
+                ? null : auth.getName();
+        try {
+            String resourceId = resourceId(request);
+            auditEvents.recordRejection(actor, action(request), request.getMethod(),
+                    request.getRequestURI(), "Invalid request parameters or body",
+                    resourceId == null ? null : "ACCOUNT", resourceId, amountMinor(request));
+        } catch (RuntimeException ignored) {
+            // Preserve the 400 response even if the audit store is unavailable.
+        }
+        return ResponseEntity.badRequest().body(Map.of(
+                "status", 400, "error", "Bad Request",
+                "detail", "Invalid request parameters or body"));
     }
 
     private JsonNode requestBody(HttpServletRequest request) {

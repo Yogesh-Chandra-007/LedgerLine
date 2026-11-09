@@ -260,6 +260,25 @@ class BankingWorkflowTest {
         assertEquals(1, transactions.count());
     }
 
+
+    @Test
+    void invalidHttpAmountIsRecordedAsARejectedStatementAttempt() throws Exception {
+        BankAccount account = banking.openAccount("holder-one", "INR");
+        mockMvc.perform(post("/api/account-holder/transactions/withdraw")
+                .with(httpBasic("holder-one", PASSWORD))
+                .header("Idempotency-Key", "invalid-http-" + java.util.UUID.randomUUID())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"accountId\":\"" + account.getId() + "\",\"amountMinor\":0}"))
+                .andExpect(status().isBadRequest());
+
+        var statement = banking.statement("holder-one", account.getId());
+        assertEquals(1, statement.size());
+        assertEquals("REJECTED", statement.get(0).outcome());
+        assertEquals(0L, statement.get(0).amountMinor());
+        assertEquals(0L, statement.get(0).balanceAfterMinor());
+        assertEquals("Invalid request parameters or body", statement.get(0).reason());
+    }
+
     private boolean attemptWithdrawal(java.util.UUID accountId, String key, CountDownLatch start) {
         try {
             start.await();
