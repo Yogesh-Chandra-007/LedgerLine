@@ -105,7 +105,7 @@ npm install
 npm run build
 ```
 
-The tests include identity/RBAC checks and banking workflow cases for balanced entries, idempotent retries, overdraft rejection, ownership enforcement, transfers, and currency mismatch. A test file is not proof of a passing run: check the GitHub Actions result and run the commands locally before the final demo.
+The tests include identity/RBAC checks and banking workflow cases for balanced entries, idempotent retries, overdraft rejection, ownership enforcement, transfers, currency mismatch, and concurrent withdrawals. GitHub Actions passed the backend test and frontend production-build jobs for commit `16572bb`; the subsequent dashboard retry-safety update is being checked by CI. Run the commands locally and verify the latest workflow before the final demo.
 
 ## Security and demo boundaries
 
