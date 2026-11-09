@@ -6,6 +6,11 @@ import com.ledgerline.domain.*;
 import com.ledgerline.repository.*;
 import com.ledgerline.service.BankingService;
 import org.junit.jupiter.api.BeforeEach;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -110,6 +115,42 @@ class BankingWorkflowTest {
                 () -> banking.transfer("holder-one", inr.getId(), inr.getId(), 1L, "same-account"));
         assertThrows(ResponseStatusException.class,
                 () -> banking.transfer("holder-one", inr.getId(), usd.getId(), 1L, "currency-mismatch"));
+    }
+
+
+    @Test
+    void concurrentWithdrawalsCannotOverdrawTheSameAccount() throws Exception {
+        BankAccount account = banking.openAccount("holder-one", "INR");
+        banking.deposit("holder-one", account.getId(), 1_000L, "concurrency-seed");
+
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<Boolean> first = pool.submit(() -> attemptWithdrawal(account.getId(), "parallel-a", start));
+            Future<Boolean> second = pool.submit(() -> attemptWithdrawal(account.getId(), "parallel-b", start));
+            start.countDown();
+
+            int successful = (first.get(10, TimeUnit.SECONDS) ? 1 : 0)
+                    + (second.get(10, TimeUnit.SECONDS) ? 1 : 0);
+            assertEquals(1, successful, "Only one 700-minor-unit withdrawal may succeed");
+            assertEquals(300L, accounts.findById(account.getId()).orElseThrow().getBalanceMinor());
+            assertEveryTransactionBalances();
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    private boolean attemptWithdrawal(java.util.UUID accountId, String key, CountDownLatch start) {
+        try {
+            start.await();
+            banking.withdraw("holder-one", accountId, 700L, key);
+            return true;
+        } catch (ResponseStatusException expectedRejection) {
+            return false;
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
     }
 
     private void assertEveryTransactionBalances() {
