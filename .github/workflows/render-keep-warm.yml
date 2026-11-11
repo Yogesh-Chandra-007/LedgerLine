@@ -1,0 +1,35 @@
+name: Keep Render Warm
+
+on:
+  schedule:
+    # Ping every 10 minutes, inside Render Free's 15-minute idle window.
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: render-keep-warm
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    name: Ping LedgerLine health endpoint
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check application health
+        run: |
+          set -euo pipefail
+          URL="https://ledgerline-yus2.onrender.com/api/health"
+          echo "Pinging LedgerLine at $(date -u --iso-8601=seconds)"
+          curl --fail --silent --show-error \
+            --connect-timeout 10 \
+            --max-time 25 \
+            --retry 2 \
+            --retry-all-errors \
+            --retry-delay 5 \
+            "$URL"
+          echo
+          echo "LedgerLine health endpoint responded successfully."
